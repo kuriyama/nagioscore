@@ -48,9 +48,6 @@ extern int ack_no_send;
 #define MAX_AUTHOR_LENGTH	64
 #define MAX_COMMENT_LENGTH	1024
 
-#define HTML_CONTENT   0
-#define WML_CONTENT    1
-
 
 char *host_name = "";
 char *hostgroup_name = "";
@@ -86,8 +83,6 @@ int broadcast_notification = 0;
 
 int command_type = CMD_NONE;
 int command_mode = CMDMODE_REQUEST;
-
-int content_type = HTML_CONTENT;
 
 int display_header = TRUE;
 
@@ -127,10 +122,7 @@ int main(void) {
 	result = read_cgi_config_file(get_cgi_config_location(), cgicfg_callback);
 	if(result == ERROR) {
 		document_header(FALSE);
-		if(content_type == WML_CONTENT)
-			printf("<p>Error: Could not open CGI config file!</p>\n");
-		else
-			cgi_config_file_error(get_cgi_config_location());
+		cgi_config_file_error(get_cgi_config_location());
 		document_footer();
 		return ERROR;
 		}
@@ -139,10 +131,7 @@ int main(void) {
 	result = read_main_config_file(main_config_file);
 	if(result == ERROR) {
 		document_header(FALSE);
-		if(content_type == WML_CONTENT)
-			printf("<p>Error: Could not open main config file!</p>\n");
-		else
-			main_config_file_error(main_config_file);
+		main_config_file_error(main_config_file);
 		document_footer();
 		return ERROR;
 		}
@@ -159,10 +148,7 @@ int main(void) {
 	result = read_all_object_configuration_data(main_config_file, READ_ALL_OBJECT_DATA);
 	if(result == ERROR) {
 		document_header(FALSE);
-		if(content_type == WML_CONTENT)
-			printf("<p>Error: Could not read object config data!</p>\n");
-		else
-			object_data_error();
+		object_data_error();
 		document_footer();
 		return ERROR;
 		}
@@ -228,10 +214,7 @@ int main(void) {
 
 	/* if no command was specified... */
 	if(command_type == CMD_NONE) {
-		if(content_type == WML_CONTENT)
-			printf("<p>Error: No command specified!</p>\n");
-		else
-			printf("<P><DIV CLASS='errorMessage'>Error: No command was specified</DIV></P>\n");
+		printf("<P><DIV CLASS='errorMessage'>Error: No command was specified</DIV></P>\n");
 		}
 
 	/* if this is the first request for a command, present option */
@@ -283,41 +266,26 @@ void cgicfg_callback(const char *var, const char *val)
 
 void document_header(int use_stylesheet) {
 
-	if(content_type == WML_CONTENT) {
+	printf("Content-type: text/html; charset=utf-8\r\n\r\n");
 
-		printf("Content-type: text/vnd.wap.wml\r\n\r\n");
+	printf("<html>\n");
+	printf("<head>\n");
+	printf("<link rel=\"shortcut icon\" href=\"%sfavicon.ico\" type=\"image/ico\">\n", url_images_path);
+	printf("<title>\n");
+	printf("External Command Interface\n");
+	printf("</title>\n");
 
-		printf("<?xml version=\"1.0\"?>\n");
-		printf("<!DOCTYPE wml PUBLIC \"-//WAPFORUM//DTD WML 1.1//EN\" \"http://www.wapforum.org/DTD/wml_1.1.xml\">\n");
-
-		printf("<wml>\n");
-
-		printf("<card id='card1' title='Command Results'>\n");
+	if(use_stylesheet == TRUE) {
+		printf("<LINK REL='stylesheet' TYPE='text/css' HREF='%s%s'>\n", url_stylesheets_path, COMMON_CSS);
+		printf("<LINK REL='stylesheet' TYPE='text/css' HREF='%s%s'>\n", url_stylesheets_path, COMMAND_CSS);
 		}
 
-	else {
+	printf("</head>\n");
 
-		printf("Content-type: text/html; charset=utf-8\r\n\r\n");
+	printf("<body CLASS='cmd'>\n");
 
-		printf("<html>\n");
-		printf("<head>\n");
-		printf("<link rel=\"shortcut icon\" href=\"%sfavicon.ico\" type=\"image/ico\">\n", url_images_path);
-		printf("<title>\n");
-		printf("External Command Interface\n");
-		printf("</title>\n");
-
-		if(use_stylesheet == TRUE) {
-			printf("<LINK REL='stylesheet' TYPE='text/css' HREF='%s%s'>\n", url_stylesheets_path, COMMON_CSS);
-			printf("<LINK REL='stylesheet' TYPE='text/css' HREF='%s%s'>\n", url_stylesheets_path, COMMAND_CSS);
-			}
-
-		printf("</head>\n");
-
-		printf("<body CLASS='cmd'>\n");
-
-		/* include user SSI header */
-		include_ssi_files(COMMAND_CGI, SSI_HEADER);
-		}
+	/* include user SSI header */
+	include_ssi_files(COMMAND_CGI, SSI_HEADER);
 
 	return;
 	}
@@ -325,19 +293,11 @@ void document_header(int use_stylesheet) {
 
 void document_footer(void) {
 
-	if(content_type == WML_CONTENT) {
-		printf("</card>\n");
-		printf("</wml>\n");
-		}
+	/* include user SSI footer */
+	include_ssi_files(COMMAND_CGI, SSI_FOOTER);
 
-	else {
-
-		/* include user SSI footer */
-		include_ssi_files(COMMAND_CGI, SSI_FOOTER);
-
-		printf("</body>\n");
-		printf("</html>\n");
-		}
+	printf("</body>\n");
+	printf("</html>\n");
 
 	return;
 	}
@@ -661,21 +621,6 @@ int process_cgivars(void) {
 				end_time_string = "";
 			else
 				strcpy(end_time_string, variables[x]);
-			}
-
-		/* we found the content type argument */
-		else if(!strcmp(variables[x], "content")) {
-			x++;
-			if(variables[x] == NULL) {
-				error = TRUE;
-				break;
-				}
-			if(!strcmp(variables[x], "wml")) {
-				content_type = WML_CONTENT;
-				display_header = FALSE;
-				}
-			else
-				content_type = HTML_CONTENT;
 			}
 
 		/* we found the forced notification option */
@@ -1838,56 +1783,36 @@ void commit_command_data(int cmd) {
 
 	/* to be safe, we are going to REQUIRE that the authentication functionality is enabled... */
 	if(use_authentication == FALSE) {
-		if(content_type == WML_CONTENT) {
-			printf("<p>Error: Authentication is not enabled!</p>\n");
-		}
-		else {
-			printf("<P>\n");
-			printf("<DIV CLASS='errorMessage'>Sorry Dave, I can't let you do that...</DIV><br>");
-			printf("<DIV CLASS='errorDescription'>");
-			printf("It seems that you have chosen to not use the authentication functionality of the CGIs.<br><br>");
-			printf("I don't want to be personally responsible for what may happen as a result of allowing unauthorized users to issue commands to Nagios, ");
-			printf("so you'll have to disable this safeguard if you are really stubborn and want to invite trouble.<br><br>");
-			printf("<strong>Read the section on CGI authentication in the HTML documentation to learn how you can enable authentication and why you should want to.</strong>\n");
-			printf("</DIV>\n");
-			printf("</P>\n");
-		}
+		printf("<P>\n");
+		printf("<DIV CLASS='errorMessage'>Sorry Dave, I can't let you do that...</DIV><br>");
+		printf("<DIV CLASS='errorDescription'>");
+		printf("It seems that you have chosen to not use the authentication functionality of the CGIs.<br><br>");
+		printf("I don't want to be personally responsible for what may happen as a result of allowing unauthorized users to issue commands to Nagios, ");
+		printf("so you'll have to disable this safeguard if you are really stubborn and want to invite trouble.<br><br>");
+		printf("<strong>Read the section on CGI authentication in the HTML documentation to learn how you can enable authentication and why you should want to.</strong>\n");
+		printf("</DIV>\n");
+		printf("</P>\n");
 	}
 
 	/* the user is not authorized to issue the given command */
 	else if(authorized == FALSE) {
-		if(content_type == WML_CONTENT) {
-			printf("<p>Error: You're not authorized to commit that command!</p>\n");
-		}
-		else {
-			printf("<P><DIV CLASS='errorMessage'>Sorry, but you are not authorized to commit the specified command.</DIV></P>\n");
-			printf("<P><DIV CLASS='errorDescription'>Read the section of the documentation that deals with authentication and authorization in the CGIs for more information.<BR><BR>\n");
-			printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
-		}
+		printf("<P><DIV CLASS='errorMessage'>Sorry, but you are not authorized to commit the specified command.</DIV></P>\n");
+		printf("<P><DIV CLASS='errorDescription'>Read the section of the documentation that deals with authentication and authorization in the CGIs for more information.<BR><BR>\n");
+		printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
 	}
 
 	/* some error occurred (data was probably missing) */
 	else if(error_string) {
-		if(content_type == WML_CONTENT) {
-			printf("<p>%s</p>\n", error_string);
-		}
-		else {
-			printf("<P><DIV CLASS='errorMessage'>%s</DIV></P>\n", error_string);
-			printf("<P><DIV CLASS='errorDescription'>Go <A HREF='javascript:window.history.go(-1)'>back</A> and verify that you entered all required information correctly.<BR>\n");
-			printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
-		}
+		printf("<P><DIV CLASS='errorMessage'>%s</DIV></P>\n", error_string);
+		printf("<P><DIV CLASS='errorDescription'>Go <A HREF='javascript:window.history.go(-1)'>back</A> and verify that you entered all required information correctly.<BR>\n");
+		printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
 	}
 
 	/* if Nagios isn't checking external commands, don't do anything... */
 	else if(check_external_commands == FALSE) {
-		if(content_type == WML_CONTENT) {
-			printf("<p>Error: Nagios is not checking external commands!</p>\n");
-		}
-		else {
-			printf("<P><DIV CLASS='errorMessage'>Sorry, but Nagios is currently not checking for external commands, so your command will not be committed!</DIV></P>\n");
-			printf("<P><DIV CLASS='errorDescription'>Read the documentation for information on how to enable external commands...<BR><BR>\n");
-			printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
-		}
+		printf("<P><DIV CLASS='errorMessage'>Sorry, but Nagios is currently not checking for external commands, so your command will not be committed!</DIV></P>\n");
+		printf("<P><DIV CLASS='errorDescription'>Read the documentation for information on how to enable external commands...<BR><BR>\n");
+		printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
 	}
 
 	/* everything looks okay, so let's go ahead and commit the command... */
@@ -1897,23 +1822,13 @@ void commit_command_data(int cmd) {
 		result = commit_command(cmd);
 
 		if(result == OK) {
-			if(content_type == WML_CONTENT) {
-				printf("<p>Your command was submitted successfully...</p>\n");
-			}
-			else {
-				printf("<P><DIV CLASS='infoMessage'>Your command request was successfully submitted to Nagios for processing.<BR><BR>\n");
-				printf("Note: It may take a while before the command is actually processed.<BR><BR>\n");
-				printf("<A HREF='javascript:window.history.go(-2)'>Done</A></DIV></P>");
-			}
+			printf("<P><DIV CLASS='infoMessage'>Your command request was successfully submitted to Nagios for processing.<BR><BR>\n");
+			printf("Note: It may take a while before the command is actually processed.<BR><BR>\n");
+			printf("<A HREF='javascript:window.history.go(-2)'>Done</A></DIV></P>");
 		}
 		else {
-			if(content_type == WML_CONTENT) {
-				printf("<p>An error occurred while committing your command!</p>\n");
-			}
-			else {
-				printf("<P><DIV CLASS='errorMessage'>An error occurred while attempting to commit your command for processing.<BR><BR>\n");
-				printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
-			}
+			printf("<P><DIV CLASS='errorMessage'>An error occurred while attempting to commit your command for processing.<BR><BR>\n");
+			printf("<A HREF='javascript:window.history.go(-2)'>Return from whence you came</A></DIV></P>\n");
 		}
 	}
 
@@ -2274,14 +2189,10 @@ int write_command_to_file(char *cmd) {
 	/* bail out if the external command file doesn't exist */
 	if(stat(command_file, &statbuf)) {
 
-		if(content_type == WML_CONTENT)
-			printf("<p>Error: Could not stat() external command file!</p>\n");
-		else {
-			printf("<P><DIV CLASS='errorMessage'>Error: Could not stat() command file '%s'!</DIV></P>\n", command_file);
-			printf("<P><DIV CLASS='errorDescription'>");
-			printf("The external command file may be missing, Nagios may not be running, and/or Nagios may not be checking external commands.\n");
-			printf("</DIV></P>\n");
-			}
+		printf("<P><DIV CLASS='errorMessage'>Error: Could not stat() command file '%s'!</DIV></P>\n", command_file);
+		printf("<P><DIV CLASS='errorDescription'>");
+		printf("The external command file may be missing, Nagios may not be running, and/or Nagios may not be checking external commands.\n");
+		printf("</DIV></P>\n");
 
 		return ERROR;
 		}
@@ -2290,14 +2201,10 @@ int write_command_to_file(char *cmd) {
 	fp = fopen(command_file, "w");
 	if(fp == NULL) {
 
-		if(content_type == WML_CONTENT)
-			printf("<p>Error: Could not open command file for update!</p>\n");
-		else {
-			printf("<P><DIV CLASS='errorMessage'>Error: Could not open command file '%s' for update!</DIV></P>\n", command_file);
-			printf("<P><DIV CLASS='errorDescription'>");
-			printf("The permissions on the external command file and/or directory may be incorrect.  Read the FAQs on how to setup proper permissions.\n");
-			printf("</DIV></P>\n");
-			}
+		printf("<P><DIV CLASS='errorMessage'>Error: Could not open command file '%s' for update!</DIV></P>\n", command_file);
+		printf("<P><DIV CLASS='errorDescription'>");
+		printf("The permissions on the external command file and/or directory may be incorrect.  Read the FAQs on how to setup proper permissions.\n");
+		printf("</DIV></P>\n");
 
 		return ERROR;
 		}

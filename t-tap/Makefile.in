@@ -24,6 +24,7 @@ TESTS += test_macros
 TESTS += test_json_escape
 TESTS += test_getcgi
 TESTS += test_cgiauth
+TESTS += test_cmd
 
 XSD_OBJS = $(SRC_CGI)/statusdata-cgi.o $(SRC_CGI)/xstatusdata-cgi.o
 XSD_OBJS += $(SRC_CGI)/objects-cgi.o $(SRC_CGI)/xobjects-cgi.o
@@ -115,6 +116,20 @@ test_getcgi: test_getcgi.o $(SRC_CGI)/getcgi.o $(TAPOBJ)
 
 test_cgiauth: test_cgiauth.o $(SRC_CGI)/cgiauth.o $(SRC_COMMON)/shared.o $(TAPOBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+# test_cmd.c tests cgi/cmd.c, which is NSCGI code (not the NSCORE this
+# Makefile's global CFLAGS otherwise targets) and, being a full CGI
+# program, has its own main() -- renamed out of the way at compile time
+# with -Dmain since nothing here calls it, only write_command_to_file()
+# and clean_comment_data(). See t-tap/test_cmd.c's own header comment.
+test_cmd.o: test_cmd.c
+	$(CC) $(CFLAGS) -DNSCGI -c -o $@ test_cmd.c
+
+cmd-fortest.o: $(SRC_CGI)/cmd.c
+	$(CC) $(CFLAGS) -DNSCGI -Dmain=cmd_main_unused -c -o $@ $(SRC_CGI)/cmd.c
+
+test_cmd: test_cmd.o cmd-fortest.o $(TAPOBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 test: $(TESTS)
 	HARNESS_PERL=./test_each.t perl -MTest::Harness -e '$$Test::Harness::switches=""; runtests(map { "./$$_" } @ARGV)' $(TESTS) 2>&1

@@ -10,6 +10,8 @@ import {
 	type ServiceStatusValue,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
+import { promptAcknowledge, promptDowntime } from './actions';
+import { acknowledgeService, scheduleServiceDowntime } from './commands';
 
 /**
  * Port of cgi/status.c's show_service_detail() (the "Services" nav link,
@@ -134,7 +136,24 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	}
 }
 
-function renderServiceCell(entry: ServiceStatusEntry, obj: ServiceObjectDetails | undefined): HTMLTableCellElement {
+function actionLink(label: string, onClick: () => void): HTMLAnchorElement {
+	const a = document.createElement('a');
+	a.href = '#';
+	a.textContent = label;
+	a.className = 'actionLink';
+	a.addEventListener('click', (ev) => {
+		ev.preventDefault();
+		onClick();
+	});
+	return a;
+}
+
+function renderServiceCell(
+	entry: ServiceStatusEntry,
+	obj: ServiceObjectDetails | undefined,
+	onActionComplete: () => void,
+	setActionStatus: (msg: string) => void,
+): HTMLTableCellElement {
 	const td = document.createElement('td');
 
 	const nameLine = document.createElement('div');
@@ -174,6 +193,31 @@ function renderServiceCell(entry: ServiceStatusEntry, obj: ServiceObjectDetails 
 	}
 	td.appendChild(iconLine);
 
+	const actionsLine = document.createElement('div');
+	const isProblem = s.status === 'warning' || s.status === 'critical' || s.status === 'unknown';
+	if (isProblem && !s.problem_has_been_acknowledged) {
+		actionsLine.appendChild(
+			actionLink('Ack', async () => {
+				const opts = await promptAcknowledge(`service ${entry.description} on ${entry.hostName}`);
+				if (!opts) return;
+				const result = await acknowledgeService(entry.hostName, entry.description, opts);
+				setActionStatus(result.message);
+				if (result.ok) onActionComplete();
+			}),
+		);
+		actionsLine.appendChild(document.createTextNode(' '));
+	}
+	actionsLine.appendChild(
+		actionLink('Downtime', async () => {
+			const opts = await promptDowntime(`service ${entry.description} on ${entry.hostName}`);
+			if (!opts) return;
+			const result = await scheduleServiceDowntime(entry.hostName, entry.description, opts);
+			setActionStatus(result.message);
+			if (result.ok) onActionComplete();
+		}),
+	);
+	td.appendChild(actionsLine);
+
 	return td;
 }
 
@@ -184,6 +228,8 @@ function renderTableBody(
 	queryTime: number,
 	sort: SortState,
 	memberFilter: Set<string> | null,
+	onActionComplete: () => void,
+	setActionStatus: (msg: string) => void,
 ): void {
 	tbody.innerHTML = '';
 
@@ -205,7 +251,7 @@ function renderTableBody(
 		hostCell.appendChild(hostLink);
 		row.appendChild(hostCell);
 
-		row.appendChild(renderServiceCell(entry, obj));
+		row.appendChild(renderServiceCell(entry, obj, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[s.status];
@@ -272,6 +318,7 @@ export function renderServices(container: HTMLElement): () => void {
 	let tbody: HTMLTableSectionElement | null = null;
 	let groupSelect: HTMLSelectElement | null = null;
 	let lastUpdatedEl: HTMLElement | null = null;
+	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
 
 	function currentMemberFilter(): Set<string> | null {
@@ -281,9 +328,24 @@ export function renderServices(container: HTMLElement): () => void {
 		return new Set(group.members.map((m) => serviceKey(m.host_name, m.service_description)));
 	}
 
+	function setActionStatus(msg: string): void {
+		if (actionStatusEl) {
+			actionStatusEl.textContent = msg;
+		}
+	}
+
 	function rerenderTable(): void {
 		if (tbody) {
-			renderTableBody(tbody, currentServices, currentObjects, currentQueryTime, sort, currentMemberFilter());
+			renderTableBody(
+				tbody,
+				currentServices,
+				currentObjects,
+				currentQueryTime,
+				sort,
+				currentMemberFilter(),
+				() => void load(false),
+				setActionStatus,
+			);
 		}
 		if (heading) {
 			const filter = currentMemberFilter();
@@ -373,6 +435,10 @@ export function renderServices(container: HTMLElement): () => void {
 			lastUpdatedEl = document.createElement('div');
 			lastUpdatedEl.id = 'detailLastUpdated';
 			container.appendChild(lastUpdatedEl);
+
+			actionStatusEl = document.createElement('div');
+			actionStatusEl.id = 'detailActionStatus';
+			container.appendChild(actionStatusEl);
 
 			const table = document.createElement('table');
 			table.className = 'status';

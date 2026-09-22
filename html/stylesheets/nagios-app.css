@@ -45,3 +45,73 @@ table.status td {
 	vertical-align: top;
 	font-size: 10pt;
 	}
+
+#detailActionStatus {
+	font-size: 9pt;
+	color: #333;
+	min-height: 1em;
+	margin-bottom: 6px;
+	}
+
+.actionLink {
+	font-size: 9pt;
+	}
+
+/* webui/src/modal.ts's generic dialog, used for the Acknowledge/Schedule
+   Downtime forms. */
+.modalOverlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.4);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+	}
+
+.modalDialog {
+	background: white;
+	border: 1px solid #999;
+	border-radius: 4px;
+	padding: 16px 20px;
+	min-width: 320px;
+	max-width: 90vw;
+	max-height: 90vh;
+	overflow: auto;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+	}
+
+.modalDialog h3 {
+	margin-top: 0;
+	}
+
+.modalRow {
+	margin-bottom: 10px;
+	}
+
+.modalRow label {
+	display: block;
+	font-size: 10pt;
+	}
+
+.modalRow input[type='text'],
+.modalRow input[type='datetime-local'],
+.modalRow input[type='number'],
+.modalRow textarea,
+.modalRow select {
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 2px;
+	}
+
+.modalButtons {
+	text-align: right;
+	margin-top: 12px;
+	}
+
+.modalButtons button {
+	margin-left: 6px;
+	}

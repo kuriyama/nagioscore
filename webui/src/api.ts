@@ -14,6 +14,7 @@ declare global {
 
 interface NagiosResult {
 	query_time: number;
+	user: string;
 	type_code: number;
 	type_text: string;
 	message: string;
@@ -25,7 +26,7 @@ interface NagiosResponse<T> {
 	data: T;
 }
 
-function cgiUrl(cgiName: string): string {
+export function cgiUrl(cgiName: string): string {
 	const base = window.NAGIOS_CGI_URL ?? '';
 	return `${base}/${cgiName}`;
 }
@@ -33,6 +34,16 @@ function cgiUrl(cgiName: string): string {
 interface FetchResult<T> {
 	data: T;
 	queryTime: number;
+}
+
+// Every successful JSON response carries the authenticated username in
+// result.user; cache the most recent one instead of making a dedicated
+// request just to find out who's logged in (used by commands.ts to
+// pre-fill the acknowledge/downtime comment author field).
+let lastKnownUser: string | null = null;
+
+export function getCurrentUser(): string | null {
+	return lastKnownUser;
 }
 
 async function fetchJsonWithResult<T>(cgiName: string, params: Record<string, string>): Promise<FetchResult<T>> {
@@ -45,6 +56,9 @@ async function fetchJsonWithResult<T>(cgiName: string, params: Record<string, st
 		throw new Error(`${cgiName} request failed: HTTP ${res.status}`);
 	}
 	const body = (await res.json()) as NagiosResponse<T>;
+	if (body.result.user) {
+		lastKnownUser = body.result.user;
+	}
 	if (body.result.type_code !== RESULT_SUCCESS) {
 		throw new Error(`${cgiName} error: ${body.result.message || body.result.type_text}`);
 	}

@@ -10,6 +10,8 @@ import {
 	type HostStatusValue,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
+import { promptAcknowledge, promptDowntime } from './actions';
+import { acknowledgeHost, scheduleHostDowntime } from './commands';
 
 /**
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
@@ -121,7 +123,25 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	}
 }
 
-function renderHostCell(hostName: string, status: HostStatusDetails, obj: HostObjectDetails | undefined): HTMLTableCellElement {
+function actionLink(label: string, onClick: () => void): HTMLAnchorElement {
+	const a = document.createElement('a');
+	a.href = '#';
+	a.textContent = label;
+	a.className = 'actionLink';
+	a.addEventListener('click', (ev) => {
+		ev.preventDefault();
+		onClick();
+	});
+	return a;
+}
+
+function renderHostCell(
+	hostName: string,
+	status: HostStatusDetails,
+	obj: HostObjectDetails | undefined,
+	onActionComplete: () => void,
+	setActionStatus: (msg: string) => void,
+): HTMLTableCellElement {
 	const td = document.createElement('td');
 
 	const nameLine = document.createElement('div');
@@ -166,6 +186,31 @@ function renderHostCell(hostName: string, status: HostStatusDetails, obj: HostOb
 	icon(iconLine, 'status2.gif', 'View the status of all services for this host', statusCgiHostUrl(hostName));
 	td.appendChild(iconLine);
 
+	const actionsLine = document.createElement('div');
+	const isProblem = status.status === 'down' || status.status === 'unreachable';
+	if (isProblem && !status.problem_has_been_acknowledged) {
+		actionsLine.appendChild(
+			actionLink('Ack', async () => {
+				const opts = await promptAcknowledge(`host ${hostName}`);
+				if (!opts) return;
+				const result = await acknowledgeHost(hostName, opts);
+				setActionStatus(result.message);
+				if (result.ok) onActionComplete();
+			}),
+		);
+		actionsLine.appendChild(document.createTextNode(' '));
+	}
+	actionsLine.appendChild(
+		actionLink('Downtime', async () => {
+			const opts = await promptDowntime(`host ${hostName}`);
+			if (!opts) return;
+			const result = await scheduleHostDowntime(hostName, opts);
+			setActionStatus(result.message);
+			if (result.ok) onActionComplete();
+		}),
+	);
+	td.appendChild(actionsLine);
+
 	return td;
 }
 
@@ -176,6 +221,8 @@ function renderTableBody(
 	queryTime: number,
 	sort: SortState,
 	memberFilter: Set<string> | null,
+	onActionComplete: () => void,
+	setActionStatus: (msg: string) => void,
 ): void {
 	tbody.innerHTML = '';
 
@@ -191,7 +238,7 @@ function renderTableBody(
 		const obj = objects[hostName];
 
 		const row = document.createElement('tr');
-		row.appendChild(renderHostCell(hostName, status, obj));
+		row.appendChild(renderHostCell(hostName, status, obj, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[status.status];
@@ -257,6 +304,7 @@ export function renderHosts(container: HTMLElement): () => void {
 	let tbody: HTMLTableSectionElement | null = null;
 	let groupSelect: HTMLSelectElement | null = null;
 	let lastUpdatedEl: HTMLElement | null = null;
+	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
 
 	function currentMemberFilter(): Set<string> | null {
@@ -265,9 +313,24 @@ export function renderHosts(container: HTMLElement): () => void {
 		return group ? new Set(group.members) : null;
 	}
 
+	function setActionStatus(msg: string): void {
+		if (actionStatusEl) {
+			actionStatusEl.textContent = msg;
+		}
+	}
+
 	function rerenderTable(): void {
 		if (tbody) {
-			renderTableBody(tbody, currentHosts, currentObjects, currentQueryTime, sort, currentMemberFilter());
+			renderTableBody(
+				tbody,
+				currentHosts,
+				currentObjects,
+				currentQueryTime,
+				sort,
+				currentMemberFilter(),
+				() => void load(false),
+				setActionStatus,
+			);
 		}
 		if (heading) {
 			const filter = currentMemberFilter();
@@ -357,6 +420,10 @@ export function renderHosts(container: HTMLElement): () => void {
 			lastUpdatedEl = document.createElement('div');
 			lastUpdatedEl.id = 'detailLastUpdated';
 			container.appendChild(lastUpdatedEl);
+
+			actionStatusEl = document.createElement('div');
+			actionStatusEl.id = 'detailActionStatus';
+			container.appendChild(actionStatusEl);
 
 			const table = document.createElement('table');
 			table.className = 'status';

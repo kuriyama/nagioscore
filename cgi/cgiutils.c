@@ -52,12 +52,9 @@ char            *host_down_sound = NULL;
 char            *host_unreachable_sound = NULL;
 char            *normal_sound = NULL;
 char            *statusmap_background_image = NULL;
-char            *statuswrl_include = NULL;
 
 char            *notes_url_target = NULL;
 char            *action_url_target = NULL;
-
-char            *ping_syntax = NULL;
 
 char            nagios_process_info[MAX_INPUT_BUFFER] = "";
 int             nagios_process_state = STATE_OK;
@@ -96,7 +93,6 @@ int             escape_html_tags = FALSE;
 int             use_ssl_authentication = FALSE;
 
 int             default_statusmap_layout_method = 0;
-int             default_statuswrl_layout_method = 0;
 
 int		color_transparency_index_r = 255;
 int		color_transparency_index_g = 255;
@@ -219,9 +215,6 @@ void reset_cgi_vars(void) {
 	color_transparency_index_r = 255;
 	color_transparency_index_g = 255;
 	color_transparency_index_b = 255;
-	statuswrl_include = NULL;
-
-	ping_syntax = NULL;
 
 	return;
 	}
@@ -245,8 +238,6 @@ void free_memory(void) {
 	free(host_unreachable_sound);
 	free(normal_sound);
 	free(statusmap_background_image);
-	free(statuswrl_include);
-	free(ping_syntax);
 
 	return;
 	}
@@ -398,15 +389,6 @@ int read_cgi_config_file(const char *filename, read_config_callback callback) {
 
 		else if(!strcmp(var, "default_statusmap_layout"))
 			default_statusmap_layout_method = atoi(val);
-
-		else if(!strcmp(var, "default_statuswrl_layout"))
-			default_statuswrl_layout_method = atoi(val);
-
-		else if(!strcmp(var, "statuswrl_include"))
-			statuswrl_include = strdup(val);
-
-		else if(!strcmp(var, "ping_syntax"))
-			ping_syntax = strdup(val);
 
 		else if(!strcmp(var, "action_url_target"))
 			action_url_target = strdup(val);

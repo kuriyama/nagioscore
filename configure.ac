@@ -504,20 +504,6 @@ AC_ARG_ENABLE(statusmap,
 )
 
 
-dnl statuswrl CGI enabled by default, unless users chooses not to use it
-TRYSTATUSWRL=yes
-AC_ARG_ENABLE(statuswrl,
-	AC_HELP_STRING([--disable-statuswrl],
-		[disables compilation of statuswrl (VRML) CGI]),
-	TRYSTATUSWRL=nope
-)
-
-if test "x$TRYSTATUSWRL" = "xyes"; then
-	AC_DEFINE_UNQUOTED(USE_STATUSWRL,,[statuswrl CGI enabled by default, unless users chooses not to use it])
-	CGIEXTRAS="$CGIEXTRAS statuswrl.cgi"
-fi
-
-
 dnl JMD_CHECK_LIB_ORDER(LIBRARY, FUNCTION, ORDER [, ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND
 dnl              [, OTHER-LIBRARIES]]])
 	AC_DEFUN([JMD_CHECK_LIB_ORDER],

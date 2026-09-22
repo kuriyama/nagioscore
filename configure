@@ -809,7 +809,6 @@ with_gd_inc
 enable_nerd
 enable_corewindow
 enable_statusmap
-enable_statuswrl
 with_cgiurl
 with_htmurl
 enable_nanosleep
@@ -1456,7 +1455,6 @@ Optional Features:
   --enable-nerd           enables Nagios Event Radio Dispatch (NERD)
   --enable-corewindow     enables the 'corewindow' URL argument
   --disable-statusmap     disables compilation of statusmap CGI
-  --disable-statuswrl     disables compilation of statuswrl (VRML) CGI
   --enable-nanosleep      enables use of nanosleep (instead of sleep) in event
                           timing
   --enable-event-broker   enables integration of event broker routines
@@ -7077,25 +7075,6 @@ TRYSTATUSMAP=yes
 if test "${enable_statusmap+set}" = set; then :
   enableval=$enable_statusmap; TRYSTATUSMAP=nope
 
-fi
-
-
-
-TRYSTATUSWRL=yes
-# Check whether --enable-statuswrl was given.
-if test "${enable_statuswrl+set}" = set; then :
-  enableval=$enable_statuswrl; TRYSTATUSWRL=nope
-
-fi
-
-
-if test "x$TRYSTATUSWRL" = "xyes"; then
-
-cat >>confdefs.h <<_ACEOF
-#define USE_STATUSWRL /**/
-_ACEOF
-
-	CGIEXTRAS="$CGIEXTRAS statuswrl.cgi"
 fi
 
 

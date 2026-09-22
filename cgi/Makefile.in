@@ -40,7 +40,7 @@ JSONFLAGS=-DJSON_NAGIOS_4X
 LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
 
-CGIS=archivejson.cgi avail.cgi cmd.cgi config.cgi extinfo.cgi history.cgi notifications.cgi objectjson.cgi outages.cgi showlog.cgi status.cgi statusjson.cgi statuswml.cgi summary.cgi tac.cgi $(CGIEXTRAS)
+CGIS=archivejson.cgi avail.cgi cmd.cgi config.cgi extinfo.cgi history.cgi notifications.cgi objectjson.cgi outages.cgi showlog.cgi status.cgi statusjson.cgi summary.cgi tac.cgi $(CGIEXTRAS)
 
 # Object functions
 ODATALIBS=objects-cgi.o xobjects-cgi.o
@@ -141,14 +141,8 @@ showlog.cgi: showlog.c $(CGIDEPS)
 status.cgi: status.c $(CGIDEPS) $(CDATADEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ status.c $(CGILIBS) $(CDATALIBS) $(LIBS)
 
-statuswml.cgi: statuswml.c $(CGIDEPS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ statuswml.c $(CGILIBS) $(LIBS)
-
 statusmap.cgi: statusmap.c $(CGIDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ statusmap.c $(CGILIBS) $(GDLIBS) $(LIBS)
-
-statuswrl.cgi: statuswrl.c $(CGIDEPS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ statuswrl.c $(CGILIBS) $(MATHLIBS) $(LIBS)
 
 summary.cgi: summary.c $(CGIDEPS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ summary.c $(CGILIBS) $(LIBS)

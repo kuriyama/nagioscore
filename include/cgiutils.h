@@ -41,7 +41,6 @@ NAGIOS_BEGIN_DECL
 #define STATUSMAP_CGI		"statusmap.cgi"
 #define LEGACY_STATUSMAP_CGI		"statusmap.cgi"
 #endif
-#define STATUSWORLD_CGI	        "statuswrl.cgi"
 #define COMMAND_CGI		"cmd.cgi"
 #define EXTINFO_CGI		"extinfo.cgi"
 #define SHOWLOG_CGI		"showlog.cgi"
@@ -57,7 +56,6 @@ NAGIOS_BEGIN_DECL
 #endif
 #define AVAIL_CGI		"avail.cgi"
 #define TAC_CGI			"tac.cgi"
-#define STATUSWML_CGI           "statuswml.cgi"
 #define TRACEROUTE_CGI		"traceroute.cgi"
 #ifdef LEGACY_GRAPHICAL_CGIS
 #define HISTOGRAM_CGI		"histogram.cgi"
@@ -127,7 +125,6 @@ NAGIOS_BEGIN_DECL
 #define STATUS_DETAIL_ICON		"status2.gif"
 #define STATUS_OVERVIEW_ICON		"status.gif"
 #define STATUSMAP_ICON                  "status3.gif"
-#define STATUSWORLD_ICON                "status4.gif"
 #define EXTINFO_ICON                	"extinfo.gif"
 #define HISTORY_ICON			"history.gif"
 #define CONTACTGROUP_ICON		"contactgroup.gif"

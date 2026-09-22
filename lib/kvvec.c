@@ -47,8 +47,14 @@ int kvvec_resize(struct kvvec *kvv, int hint)
 
 	kv = realloc(kvv->kv, sizeof(struct key_value) * hint);
 	if (!kv) {
-		if (kvv->kv)
-			free(kvv->kv);
+		/* realloc() leaves the original block untouched on failure, but
+		   we abandon it here anyway (matching this function's existing
+		   policy of freeing on resize failure) -- kv/kv_alloc must be
+		   reset together so a later kvvec_destroy() doesn't free(kvv->kv)
+		   a second time. */
+		free(kvv->kv);
+		kvv->kv = NULL;
+		kvv->kv_alloc = 0;
 		return -1;
 	}
 

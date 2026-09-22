@@ -383,14 +383,20 @@ accept_languages * parse_accept_languages( char * acceptlang) {
 		}
 		else {
 			/* Adding additional language */
-			if( NULL == ( langs->languages = realloc( langs->languages,
-					langs->count * sizeof( accept_language *)))) {
+			accept_language **new_languages = realloc( langs->languages,
+					langs->count * sizeof( accept_language *));
+			if( NULL == new_languages) {
 				printf( "Unable to allocate memory for additional language\n");
+				/* langs->languages is left untouched (still the old,
+				   valid array) so free_accept_languages() below can
+				   still walk and free every previously-allocated
+				   language entry instead of dereferencing NULL. */
 				langs->count--;
 				free_accept_languages( langs);
 				free( langdup);
 				return NULL;
 			}
+			langs->languages = new_languages;
 		}
 		if( NULL == ( langs->languages[ langs->count - 1] =
 				malloc( sizeof( accept_language)))) {

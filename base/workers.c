@@ -975,8 +975,16 @@ static int register_worker(int sd, char *buf, unsigned int len)
 				dkhash_insert(specialized_workers, strdup(kv->value), NULL, command_handlers);
 			}
 			else {
+				struct wproc_worker **new_wps;
+				new_wps = realloc(command_handlers->wps, (command_handlers->len + 1) * sizeof(struct wproc_worker**));
+				if (!new_wps) {
+					logit(NSLOG_RUNTIME_ERROR, TRUE, "wproc: Failed to allocate memory for specialized worker list: %s\n", strerror(errno));
+					free(worker);
+					kvvec_destroy(info, 0);
+					return 500;
+				}
+				command_handlers->wps = new_wps;
 				command_handlers->len++;
-				command_handlers->wps = realloc(command_handlers->wps, command_handlers->len * sizeof(struct wproc_worker**));
 				command_handlers->wps[command_handlers->len - 1] = worker;
 			}
 			worker->wp_list = command_handlers;
@@ -995,8 +1003,16 @@ static int register_worker(int sd, char *buf, unsigned int len)
 	worker->jobs = fanout_create(worker->max_jobs);
 
 	if (is_global) {
+		struct wproc_worker **new_wps;
+		new_wps = realloc(workers.wps, (workers.len + 1) * sizeof(struct wproc_worker *));
+		if (!new_wps) {
+			logit(NSLOG_RUNTIME_ERROR, TRUE, "wproc: Failed to allocate memory for global worker list: %s\n", strerror(errno));
+			free(worker);
+			kvvec_destroy(info, 0);
+			return 500;
+		}
+		workers.wps = new_wps;
 		workers.len++;
-		workers.wps = realloc(workers.wps, workers.len * sizeof(struct wproc_worker *));
 		workers.wps[workers.len - 1] = worker;
 		worker->wp_list = &workers;
 	}

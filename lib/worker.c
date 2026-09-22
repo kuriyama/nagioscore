@@ -471,7 +471,12 @@ static void gather_output(child_process *cp, iobuf *io, int final)
 
 		if (rd > 0) {
 			/* we read some data */
-			io->buf = realloc(io->buf, rd + io->len + 1);
+			char *new_buf = realloc(io->buf, rd + io->len + 1);
+			if (!new_buf) {
+				wlog("job %d (pid=%ld): Failed to allocate memory for output buffer", cp->id, (long)cp->ei->pid);
+				break;
+			}
+			io->buf = new_buf;
 			memcpy(&io->buf[io->len], buf, rd);
 			io->len += rd;
 			io->buf[io->len] = '\0';

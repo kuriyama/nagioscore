@@ -283,20 +283,25 @@ void json_free_member(json_object_member *mp, int free_children) {
 	Returns NULL on failure. */
 static json_object_member * json_object_add_member(json_object *obj) {
 
+	json_object_member **new_members;
+
 	if(0 == obj->member_count) {
-		obj->members = calloc(1, sizeof(json_object_member *)); 
+		obj->members = calloc(1, sizeof(json_object_member *));
 		if(NULL == obj->members) {
 			obj->member_count = 0;
 			return NULL;
 			}
 		}
 	else {
-		obj->members = realloc(obj->members, 
+		new_members = realloc(obj->members,
 				((obj->member_count + 1) * sizeof(json_object_member *)));
-		if(NULL == obj->members) {
+		if(NULL == new_members) {
+			free(obj->members);
+			obj->members = NULL;
 			obj->member_count = 0;
 			return NULL;
 			}
+		obj->members = new_members;
 		}
 	obj->members[ obj->member_count] = calloc(1, sizeof(json_object_member));
 	if(NULL == obj->members[ obj->member_count]) {

@@ -130,6 +130,11 @@ int xrddefault_save_state_information(void) {
 		return ERROR;
 		}
 
+	/* See xsddefault_save_status_data() for why: a bigger-than-default
+	   stdio buffer just reduces write() syscall count for this
+	   many-small-fprintf()s file writer, with no effect on content. */
+	setvbuf(fp, NULL, _IOFBF, 256 * 1024);
+
 	/* what attributes should be masked out? */
 	/* NOTE: host/service/contact-specific values may be added in the future, but for now we only have global masks */
 	process_host_attribute_mask = retained_process_host_attribute_mask;

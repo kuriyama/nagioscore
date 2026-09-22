@@ -162,6 +162,17 @@ int xsddefault_save_status_data(void) {
 		return ERROR;
 		}
 
+	/* Use a much larger stdio buffer than the ~4KB default: this file is
+	   written in full every status_update_interval seconds via dozens of
+	   small fprintf() calls per host/service, so a small buffer means a
+	   correspondingly large number of write() syscalls on what is
+	   otherwise a single-threaded, single-process event loop (nothing
+	   else runs while this write is in progress). A bigger buffer just
+	   reduces syscall count; it changes nothing about the file's content
+	   or format. Failure to set it (e.g. OOM) is not fatal -- stdio just
+	   keeps using its default buffering. */
+	setvbuf(fp, NULL, _IOFBF, 256 * 1024);
+
 	/* generate check statistics */
 	generate_check_stats();
 

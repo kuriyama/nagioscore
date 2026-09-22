@@ -14,37 +14,6 @@
 #undef PARANOID_CGI_INPUT
 
 
-/* Remove potentially harmful characters from CGI input that we don't need or want */
-void sanitize_cgi_input(char **cgivars) {
-	char *strptr;
-	int x, y, i;
-	int keep;
-
-	/* don't strip for now... */
-	return;
-
-	for(strptr = cgivars[i = 0]; strptr != NULL; strptr = cgivars[++i]) {
-
-		for(x = 0, y = 0; strptr[x] != '\x0'; x++) {
-
-			keep = 1;
-
-			/* remove potentially nasty characters */
-			if(strptr[x] == ';' || strptr[x] == '|' || strptr[x] == '&' || strptr[x] == '<' || strptr[x] == '>')
-				keep = 0;
-#ifdef PARANOID_CGI_INPUT
-			else if(strptr[x] == '/' || strptr[x] == '\\')
-				keep = 0;
-#endif
-			if(keep == 1)
-				strptr[y++] = strptr[x];
-			}
-
-		strptr[y] = '\x0';
-		}
-	}
-
-
 /* convert encoded hex string (2 characters representing an 8-bit number) to its ASCII char equivalent */
 unsigned char hex_to_char(char *input) {
 	unsigned char outchar = '\x0';
@@ -319,9 +288,6 @@ char **getcgivars(void) {
 	for(i = 0; pairlist[i]; i++)
 		free(pairlist[i]);
 	free(pairlist);
-
-	/* sanitize the name-value strings */
-	sanitize_cgi_input(cgivars);
 
 	/* return the list of name-value strings */
 	return cgivars;

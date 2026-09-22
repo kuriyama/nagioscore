@@ -2302,7 +2302,7 @@ void display_command_expansion(void) {
 						if(((*c) == '\0') || ((*c) == '$')) {
 							/* Index is numeric */
 							i = atoi(cc);
-							if((i > 0) && (i <= MAX_COMMAND_ARGUMENTS)) {
+							if((i > 0) && (i < MAX_COMMAND_ARGUMENTS)) {
 								arg_count[i]++;
 								if(command_args[i]) {
 									if(*(command_args[i]) != '\0') printf("<FONT COLOR='%s'><B>%s%s%s</B></FONT>",

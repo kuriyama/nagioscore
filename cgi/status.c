@@ -244,18 +244,22 @@ int main(void) {
 		if(NULL != strstr(host_name, "*")) {
 			/* allocate for 3 extra chars, ^, $ and \0 */
 			host_filter = malloc(sizeof(char) * (strlen(host_name) * 2 + 3));
-			len = strlen(host_name);
-			for(i = 0; i < len; i++, regex_i++) {
-				if(host_name[i] == '*') {
-					host_filter[regex_i++] = '.';
-					host_filter[regex_i] = '*';
+			if(host_filter != NULL) {
+				len = strlen(host_name);
+				for(i = 0; i < len; i++, regex_i++) {
+					if(host_name[i] == '*') {
+						host_filter[regex_i++] = '.';
+						host_filter[regex_i] = '*';
+						}
+					else
+						host_filter[regex_i] = host_name[i];
 					}
-				else
-					host_filter[regex_i] = host_name[i];
+				host_filter[0] = '^';
+				host_filter[regex_i++] = '$';
+				host_filter[regex_i] = '\0';
 				}
-			host_filter[0] = '^';
-			host_filter[regex_i++] = '$';
-			host_filter[regex_i] = '\0';
+			/* else: leave host_filter NULL -- every consumer of it
+			   below already treats NULL as "no filter applied" */
 			}
 		else {
 			if((temp_host = find_host(host_name)) == NULL) {
@@ -264,14 +268,21 @@ int main(void) {
 						continue;
 					if(!strcmp(host_name, temp_host->address)) {
 						host_address = strdup(temp_host->address);
-						host_filter = malloc(sizeof(char) * (strlen(host_address) * 2 + 3));
-						len = strlen(host_address);
-						for(i = 0; i < len; i++, regex_i++) {
-							host_filter[regex_i] = host_address[i];
-						}
-						host_filter[0] = '^';
-						host_filter[regex_i++] = '$';
-						host_filter[regex_i] = '\0';
+						if(host_address != NULL) {
+							host_filter = malloc(sizeof(char) * (strlen(host_address) * 2 + 3));
+							if(host_filter != NULL) {
+								len = strlen(host_address);
+								for(i = 0; i < len; i++, regex_i++) {
+									host_filter[regex_i] = host_address[i];
+								}
+								host_filter[0] = '^';
+								host_filter[regex_i++] = '$';
+								host_filter[regex_i] = '\0';
+								}
+							/* else: leave host_filter NULL -- every
+							   consumer of it below already treats NULL
+							   as "no filter applied" */
+							}
 						break;
 						}
 					}

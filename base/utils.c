@@ -1893,9 +1893,7 @@ int daemon_init(void)
 		if (homedir && *homedir) {
 			chdir(homedir);
 		}
-		else if (log_file && *log_file) {
-
-			homedir = strdup(log_file);
+		else if (log_file && *log_file && (homedir = strdup(log_file)) != NULL) {
 
 			cp = strrchr(homedir, '/');
 
@@ -2413,6 +2411,10 @@ int process_check_result_file(const char *fname)
 		var = strdup(vartok);
 		val = strdup(valtok);
 		vartok = my_strtok_with_free(NULL, NULL, TRUE);
+
+		if (var == NULL || val == NULL) {
+			continue;
+		}
 
 		log_debug_info(DEBUGL_CHECKS, 2, " * %25s: %s\n", var, val);
 

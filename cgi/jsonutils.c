@@ -1050,10 +1050,10 @@ void json_duration(int padding, int whitespace, char *key, unsigned long value,
 
 	char		*keybuf = NULL;
 	char		buf[1024];
-	int			days = 0;
-	int			hours = 0;
-	int			minutes = 0;
-	int			seconds = 0;
+	unsigned int	days = 0;
+	unsigned int	hours = 0;
+	unsigned int	minutes = 0;
+	unsigned int	seconds = 0;
 
 	if(0 == format_duration) {
 		snprintf(buf, sizeof(buf)-1, "%lu", (unsigned long)value);
@@ -1342,7 +1342,10 @@ time_t compile_time(const char *date, const char *time) {
     struct tm t;
     const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
 
-    sscanf(date, "%s %d %d", buf, &day, &year);
+    /* buf is sized for a 3-letter month abbreviation (__DATE__'s format,
+       the only thing ever passed here) + NUL; bound the conversion so a
+       future caller passing anything longer can't overflow it. */
+    sscanf(date, "%4s %d %d", buf, &day, &year);
     sscanf(time, "%d:%d:%d", &hour, &minute, &second);
 
     month = (strstr(months, buf) - months) / 3;

@@ -969,7 +969,13 @@ static int register_worker(int sd, char *buf, unsigned int len)
 			is_global = 0;
 			if (!(command_handlers = dkhash_get(specialized_workers, kv->value, NULL))) {
 				command_handlers = calloc(1, sizeof(struct wproc_list));
-				command_handlers->wps = calloc(1, sizeof(struct wproc_worker**));
+				if (!command_handlers || !(command_handlers->wps = calloc(1, sizeof(struct wproc_worker**)))) {
+					logit(NSLOG_RUNTIME_ERROR, TRUE, "wproc: Failed to allocate memory for specialized worker list: %s\n", strerror(errno));
+					free(command_handlers);
+					free(worker);
+					kvvec_destroy(info, 0);
+					return 500;
+				}
 				command_handlers->len = 1;
 				command_handlers->wps[0] = worker;
 				dkhash_insert(specialized_workers, strdup(kv->value), NULL, command_handlers);

@@ -17,7 +17,7 @@
 /* convert encoded hex string (2 characters representing an 8-bit number) to its ASCII char equivalent */
 unsigned char hex_to_char(char *input) {
 	unsigned char outchar = '\x0';
-	unsigned int outint;
+	unsigned int outint = 0;
 	char tempbuf[3];
 
 	/* NULL or empty string */

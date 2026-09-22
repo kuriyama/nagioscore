@@ -25,6 +25,8 @@
 #ifndef NAGIOS_JSONUTILS_H_INCLUDED
 #define NAGIOS_JSONUTILS_H_INCLUDED
 
+#include "json_escape.h"
+
 /* JSON object definitions */
 #define JSON_TYPE_INVALID	0
 #define JSON_TYPE_OBJECT	1
@@ -83,17 +85,6 @@ typedef struct option_help_struct {
 	const char *					description;	/* longer description */
 	const string_value_mapping *	valid_values;	/* list of valid values */
 	} option_help;
-
-/* String escaping structures */
-typedef struct json_escape_pair_struct {
-	const wchar_t *from;
-	const wchar_t *to;
-}	json_escape_pair;
-
-typedef struct json_escape_struct {
-	const int				count;
-	const json_escape_pair	*pairs;
-}	json_escape;
 
 /* Output Format Version */
 #define OUTPUT_FORMAT_VERSION	0
@@ -223,5 +214,4 @@ extern char *svm_get_string_from_value(int, const string_value_mapping *);
 extern char *svm_get_description_from_value(int, const string_value_mapping *);
 
 extern time_t compile_time(const char *, const char *);
-extern char *json_escape_string(const char *, const json_escape *);
 #endif

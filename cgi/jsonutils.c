@@ -32,6 +32,7 @@
 #include "../include/getcgi.h"
 #include "../include/cgiauth.h"
 #include "../include/jsonutils.h"
+#include "../include/json_escape.h"
 
 /* Multiplier to increment the buffer in json_escape_string() to avoid frequent
 	repeated reallocations */
@@ -220,56 +221,6 @@ const char *dayofweek[7] = { "Sunday", "Monday", "Tuesday", "Wednesday",
 const char *month[12] = { "January", "February", "March", "April", "May",
 		"June", "July", "August", "September", "October", "November",
 		"December" };
-
-static const json_escape_pair string_escape_pairs[] = {
-	{ L"\\", L"\\\\" },
-	{ L"\x01", L"\\u0001" },
-	{ L"\x02", L"\\u0002" },
-	{ L"\x03", L"\\u0003" },
-	{ L"\x04", L"\\u0004" },
-	{ L"\x05", L"\\u0004" },
-	{ L"\x06", L"\\u0006" },
-	{ L"\a", L"\\a" },
-	{ L"\b", L"\\b" },
-	{ L"\t", L"\\t" },
-	{ L"\n", L"\\n" },
-	{ L"\v", L"\\v" },
-	{ L"\f", L"\\f" },
-	{ L"\r", L"\\r" },
-	{ L"\x0e", L"\\u000e" },
-	{ L"\x0f", L"\\u000f" },
-	{ L"\x10", L"\\u0010" },
-	{ L"\x11", L"\\u0011" },
-	{ L"\x12", L"\\u0012" },
-	{ L"\x13", L"\\u0013" },
-	{ L"\x14", L"\\u0014" },
-	{ L"\x15", L"\\u0015" },
-	{ L"\x16", L"\\u0016" },
-	{ L"\x17", L"\\u0017" },
-	{ L"\x18", L"\\u0018" },
-	{ L"\x19", L"\\u0019" },
-	{ L"\x1a", L"\\u001a" },
-	{ L"\x1b", L"\\u001b" },
-	{ L"\x1c", L"\\u001c" },
-	{ L"\x1d", L"\\u001d" },
-	{ L"\x1e", L"\\u001e" },
-	{ L"\x1f", L"\\u001f" },
-	{ L"\"", L"\\\"" },
-};
-
-static const json_escape string_escapes = {
-	(sizeof(string_escape_pairs) / sizeof(string_escape_pairs[0])),
-	string_escape_pairs
-};
-
-const json_escape_pair percent_escape_pairs[] = {
-	{ L"%", L"%%" },
-};
-
-const json_escape percent_escapes = {
-	(sizeof(percent_escape_pairs) / sizeof(percent_escape_pairs[0])),
-	percent_escape_pairs
-};
 
 extern char main_config_file[MAX_FILENAME_LENGTH];
 extern time_t program_start;
@@ -1402,82 +1353,3 @@ time_t compile_time(const char *date, const char *time) {
     return mktime(&t);
 }
 
-/* Escape a string based on the values in the escapes parameter */
-char *json_escape_string(const char *src, const json_escape *escapes) {
-
-	wchar_t *wdest;		/* wide character version of the output string */
-	size_t	wdest_size;	/* number of available wchars in wdest */
-	size_t	wdest_len;	/* number of wchars in wdest */
-	int x;
-	json_escape_pair	*escp;		/* pointer to current escape pair */
-	size_t	from_len;
-	size_t	to_len;
-	wchar_t	*fromp;		/* pointer to a found "from" string */
-	long	offset;		/* offset from beginning of wdest to a "from" string */
-	size_t	wchars;		/* number of wide characters to move */
-	size_t	dest_len;	/* length of output string "dest" */
-	char	*dest;		/* buffer containing the escaped version of src */
-
-	/* Make sure we're passed valid parameters */
-	if((NULL == src) || (NULL == escapes)) {
-		return NULL;
-		}
-
-	/* Make a wide string copy of src */
-	wdest_len = mbstowcs(NULL, src, 0);
-	if(wdest_len <= 0) return NULL;
-	if((wdest = calloc(wdest_len + 1, sizeof(wchar_t))) == NULL) {
-		return NULL;
-		}
-	if(mbstowcs(wdest, src, wdest_len) != wdest_len) {
-		free(wdest);
-		return NULL;
-		}
-	wdest_size = wdest_len;
-
-	/* Process each escape pair */
-	for(x = 0, escp = (json_escape_pair *)escapes->pairs; x < escapes->count;
-			x++, escp++) {
-		from_len = wcslen(escp->from);
-		to_len = wcslen(escp->to);
-		fromp = wdest;
-		while((fromp = wcsstr(fromp, escp->from)) != NULL) {
-			offset = fromp - wdest;
-			if(from_len < to_len) {
-				if((wdest_size - wdest_len) < (to_len - from_len)) {
-					/* If more room is needed, realloc and update variables */
-					wdest_size += (to_len - from_len) * BUF_REALLOC_MULTIPLIER;
-					wdest = realloc(wdest, (wdest_size + 1) * sizeof(wchar_t));
-					if(NULL == wdest) return NULL;
-					fromp = wdest + offset;
-					}
-				wchars = wdest_len - offset - from_len + 1;
-				wmemmove(fromp + to_len, fromp + from_len, wchars);
-				wcsncpy(fromp, escp->to, to_len);
-				wdest_len += (to_len - from_len);
-				fromp += to_len;
-				}
-			else {
-				wchars = wdest_len - offset - to_len;
-				memmove(fromp + to_len, fromp + from_len,
-						wchars * sizeof(wchar_t));
-				wcsncpy(fromp, escp->to, to_len);
-				fromp += (from_len - to_len);
-				wdest_len -= (from_len - to_len);
-				}
-			}
-		}
-
-	/* Covert the wide string back to a multibyte string */
-	dest_len = wcstombs(NULL, wdest, 0);
-	if(0 == dest_len) return NULL;
-	if((dest = calloc(dest_len + 1, sizeof(char))) == NULL) {
-		return NULL;
-		}
-	if(wcstombs(dest, wdest, dest_len) != dest_len) {
-		free(dest);
-		return NULL;
-		}
-
-	return dest;
-	}

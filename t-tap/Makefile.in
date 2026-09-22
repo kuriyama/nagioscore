@@ -21,6 +21,7 @@ TESTS += test_downtime
 TESTS += test_nagios_config
 TESTS += test_timeperiods
 TESTS += test_macros
+TESTS += test_json_escape
 
 XSD_OBJS = $(SRC_CGI)/statusdata-cgi.o $(SRC_CGI)/xstatusdata-cgi.o
 XSD_OBJS += $(SRC_CGI)/objects-cgi.o $(SRC_CGI)/xobjects-cgi.o
@@ -102,6 +103,9 @@ test_macros: test_macros.o $(TP_OBJS) $(TAPOBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(SRC_BASE)/checks.o $(BROKER_LDFLAGS) $(LDFLAGS) $(MATHLIBS) $(SOCKETLIBS) $(LIBS)
 
 test_xsddefault: test_xsddefault.o $(XSD_OBJS) $(TAPOBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_json_escape: test_json_escape.o $(SRC_CGI)/json_escape.o $(TAPOBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 test: $(TESTS)

@@ -12,7 +12,16 @@ import { formatDuration, formatTimestamp } from './format';
 /**
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
  * host, no service rows. See the plan for the full column/CSS/icon mapping.
+ *
+ * Sorting and auto-refresh both operate on data already held in memory
+ * (sorting doesn't refetch; refresh re-fetches and re-renders in place,
+ * preserving whatever sort is active) -- no new API surface needed beyond
+ * what Phase A already added.
  */
+
+// Matches sample-config/cgi.cfg.in's default refresh_rate=90 (used by
+// status.cgi/statusmap.cgi/extinfo.cgi/outages.cgi) for consistency.
+const REFRESH_INTERVAL_MS = 90_000;
 
 const STATUS_LABEL: Record<HostStatusValue, string> = {
 	up: 'UP',
@@ -27,6 +36,60 @@ const STATUS_CLASS: Record<HostStatusValue, string> = {
 	unreachable: 'statusHOSTUNREACHABLE',
 	pending: 'statusHOSTPENDING',
 };
+
+// Ascending order here means "problems first", which is the natural default
+// for a status view.
+const STATUS_SEVERITY: Record<HostStatusValue, number> = {
+	down: 0,
+	unreachable: 1,
+	pending: 2,
+	up: 3,
+};
+
+type SortKey = 'host' | 'status' | 'lastCheck' | 'duration' | 'info';
+type SortDirection = 'asc' | 'desc';
+
+interface SortState {
+	key: SortKey;
+	direction: SortDirection;
+}
+
+const COLUMNS: { key: SortKey; label: string }[] = [
+	{ key: 'host', label: 'Host' },
+	{ key: 'status', label: 'Status' },
+	{ key: 'lastCheck', label: 'Last Check' },
+	{ key: 'duration', label: 'Duration' },
+	{ key: 'info', label: 'Status Information' },
+];
+
+function compareHosts(
+	[nameA, statusA]: [string, HostStatusDetails],
+	[nameB, statusB]: [string, HostStatusDetails],
+	sort: SortState,
+): number {
+	let cmp: number;
+	switch (sort.key) {
+		case 'host':
+			cmp = nameA.localeCompare(nameB);
+			break;
+		case 'status':
+			cmp = STATUS_SEVERITY[statusA.status] - STATUS_SEVERITY[statusB.status];
+			break;
+		case 'lastCheck':
+			cmp = statusA.last_check - statusB.last_check;
+			break;
+		case 'duration':
+			cmp = statusA.last_state_change - statusB.last_state_change;
+			break;
+		case 'info':
+			cmp = statusA.plugin_output.localeCompare(statusB.plugin_output);
+			break;
+	}
+	if (cmp === 0) {
+		cmp = nameA.localeCompare(nameB);
+	}
+	return sort.direction === 'asc' ? cmp : -cmp;
+}
 
 function bgClass(status: HostStatusValue, acknowledged: boolean, inDowntime: boolean, zebraOdd: boolean): string {
 	if (status === 'down') {
@@ -106,49 +169,19 @@ function renderHostCell(hostName: string, status: HostStatusDetails, obj: HostOb
 	return td;
 }
 
-export async function renderHosts(container: HTMLElement): Promise<void> {
-	container.innerHTML = '<p>Loading hosts...</p>';
+function renderTableBody(
+	tbody: HTMLTableSectionElement,
+	hosts: Record<string, HostStatusDetails>,
+	objects: Record<string, HostObjectDetails>,
+	queryTime: number,
+	sort: SortState,
+): void {
+	tbody.innerHTML = '';
 
-	let statusResult;
-	let objects;
-	try {
-		[statusResult, objects] = await Promise.all([fetchHostStatusDetails(), fetchHostObjectDetails()]);
-	} catch (err) {
-		container.innerHTML = '';
-		const p = document.createElement('p');
-		p.textContent = `Failed to load host status: ${err instanceof Error ? err.message : String(err)}`;
-		container.appendChild(p);
-		return;
-	}
-
-	const { queryTime, hosts } = statusResult;
-	const hostNames = Object.keys(hosts).sort((a, b) => a.localeCompare(b));
-
-	container.innerHTML = '';
-
-	const heading = document.createElement('h2');
-	heading.textContent = `Hosts (${hostNames.length})`;
-	container.appendChild(heading);
-
-	const table = document.createElement('table');
-	table.className = 'status';
-
-	const thead = document.createElement('thead');
-	const headRow = document.createElement('tr');
-	for (const label of ['Host', 'Status', 'Last Check', 'Duration', 'Status Information']) {
-		const th = document.createElement('th');
-		th.className = 'status';
-		th.textContent = label;
-		headRow.appendChild(th);
-	}
-	thead.appendChild(headRow);
-	table.appendChild(thead);
-
-	const tbody = document.createElement('tbody');
+	const entries = Object.entries(hosts).sort((a, b) => compareHosts(a, b, sort));
 	let zebraOdd = false;
 
-	for (const hostName of hostNames) {
-		const status = hosts[hostName];
+	for (const [hostName, status] of entries) {
 		const obj = objects[hostName];
 
 		const row = document.createElement('tr');
@@ -181,7 +214,117 @@ export async function renderHosts(container: HTMLElement): Promise<void> {
 
 		tbody.appendChild(row);
 	}
+}
 
-	table.appendChild(tbody);
-	container.appendChild(table);
+function sortIndicator(sort: SortState, key: SortKey): string {
+	if (sort.key !== key) return '';
+	return sort.direction === 'asc' ? ' ▲' : ' ▼';
+}
+
+/** Returns a cleanup function the caller should invoke when navigating away (stops auto-refresh). */
+export function renderHosts(container: HTMLElement): () => void {
+	container.innerHTML = '<p>Loading hosts...</p>';
+
+	const sort: SortState = { key: 'status', direction: 'asc' };
+	let headerCells: HTMLTableCellElement[] = [];
+	let tbody: HTMLTableSectionElement | null = null;
+	let lastUpdatedEl: HTMLElement | null = null;
+	let heading: HTMLElement | null = null;
+	let stopped = false;
+
+	function updateHeaderLabels(): void {
+		for (const [i, col] of COLUMNS.entries()) {
+			headerCells[i].textContent = col.label + sortIndicator(sort, col.key);
+		}
+	}
+
+	async function load(initial: boolean): Promise<void> {
+		let statusResult;
+		let objects;
+		try {
+			[statusResult, objects] = await Promise.all([fetchHostStatusDetails(), fetchHostObjectDetails()]);
+		} catch (err) {
+			if (!initial) {
+				// Keep showing the last-good table; just surface the error.
+				if (lastUpdatedEl) {
+					lastUpdatedEl.textContent = `Refresh failed: ${err instanceof Error ? err.message : String(err)}`;
+				}
+				return;
+			}
+			container.innerHTML = '';
+			const p = document.createElement('p');
+			p.textContent = `Failed to load host status: ${err instanceof Error ? err.message : String(err)}`;
+			container.appendChild(p);
+			return;
+		}
+
+		const { queryTime, hosts } = statusResult;
+
+		if (initial) {
+			container.innerHTML = '';
+
+			heading = document.createElement('h2');
+			container.appendChild(heading);
+
+			lastUpdatedEl = document.createElement('div');
+			lastUpdatedEl.id = 'hostsLastUpdated';
+			container.appendChild(lastUpdatedEl);
+
+			const table = document.createElement('table');
+			table.className = 'status';
+
+			const thead = document.createElement('thead');
+			const headRow = document.createElement('tr');
+			headerCells = COLUMNS.map((col) => {
+				const th = document.createElement('th');
+				th.className = 'status';
+				th.style.cursor = 'pointer';
+				th.addEventListener('click', () => {
+					if (sort.key === col.key) {
+						sort.direction = sort.direction === 'asc' ? 'desc' : 'asc';
+					} else {
+						sort.key = col.key;
+						sort.direction = 'asc';
+					}
+					updateHeaderLabels();
+					if (tbody) {
+						renderTableBody(tbody, hosts, objects, queryTime, sort);
+					}
+				});
+				headRow.appendChild(th);
+				return th;
+			});
+			thead.appendChild(headRow);
+			table.appendChild(thead);
+
+			tbody = document.createElement('tbody');
+			table.appendChild(tbody);
+			container.appendChild(table);
+
+			updateHeaderLabels();
+		}
+
+		if (heading) {
+			heading.textContent = `Hosts (${Object.keys(hosts).length})`;
+		}
+		if (lastUpdatedEl) {
+			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(queryTime)}`;
+		}
+		if (tbody) {
+			renderTableBody(tbody, hosts, objects, queryTime, sort);
+		}
+	}
+
+	void load(true);
+
+	const intervalId = window.setInterval(() => {
+		if (!stopped) {
+			void load(false);
+		}
+	}, REFRESH_INTERVAL_MS);
+
+	return () => {
+		stopped = true;
+		window.clearInterval(intervalId);
+	};
 }

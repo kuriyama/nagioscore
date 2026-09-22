@@ -26,6 +26,12 @@
 	min-height: 1em;
 	}
 
+#hostsLastUpdated {
+	font-size: 9pt;
+	color: #666;
+	margin-bottom: 6px;
+	}
+
 /* webui/src/hosts.ts's host detail table (table.status already comes from
    status.css; this just adds cell padding since that stylesheet assumes
    the old cellpadding="" HTML attribute). */

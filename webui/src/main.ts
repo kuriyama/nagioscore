@@ -2,9 +2,16 @@ import { renderNav } from './nav';
 import { renderDashboard } from './dashboard';
 import { renderHosts } from './hosts';
 
+let activeViewCleanup: (() => void) | null = null;
+
 function renderRoute(dashboardEl: HTMLElement): void {
+	if (activeViewCleanup) {
+		activeViewCleanup();
+		activeViewCleanup = null;
+	}
+
 	if (window.location.hash === '#hosts') {
-		void renderHosts(dashboardEl);
+		activeViewCleanup = renderHosts(dashboardEl);
 	} else {
 		renderDashboard(dashboardEl);
 	}

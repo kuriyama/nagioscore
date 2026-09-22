@@ -27,7 +27,7 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 		{
 			title: 'General',
 			links: [
-				{ label: 'Home', href: 'index.html' },
+				{ label: 'Home', href: '#' },
 				{ label: 'Documentation', href: 'https://go.nagios.com/nagioscore/docs', external: true },
 			],
 		},
@@ -36,7 +36,7 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 			links: [
 				{ label: 'Tactical Overview', href: `${cgiUrl}/tac.cgi` },
 				{ label: 'Map', href: `${cgiUrl}/statusmap.cgi?host=all` },
-				{ label: 'Hosts', href: `${cgiUrl}/status.cgi?hostgroup=all&style=hostdetail` },
+				{ label: 'Hosts', href: '#hosts' },
 				{ label: 'Services', href: `${cgiUrl}/status.cgi?host=all` },
 				{
 					label: 'Host Groups',

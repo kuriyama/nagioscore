@@ -1,5 +1,14 @@
 import { renderNav } from './nav';
 import { renderDashboard } from './dashboard';
+import { renderHosts } from './hosts';
+
+function renderRoute(dashboardEl: HTMLElement): void {
+	if (window.location.hash === '#hosts') {
+		void renderHosts(dashboardEl);
+	} else {
+		renderDashboard(dashboardEl);
+	}
+}
 
 function main(): void {
 	// The server name isn't known until request time, so it can't be baked
@@ -15,7 +24,8 @@ function main(): void {
 
 	const dashboardEl = document.getElementById('dashboard');
 	if (dashboardEl) {
-		renderDashboard(dashboardEl);
+		renderRoute(dashboardEl);
+		window.addEventListener('hashchange', () => renderRoute(dashboardEl));
 	}
 }
 

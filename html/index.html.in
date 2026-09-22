@@ -6,6 +6,7 @@
 	<title>Nagios Core</title>
 	<link rel="shortcut icon" href="images/favicon.ico" type="image/ico">
 	<link rel="stylesheet" type="text/css" href="stylesheets/common.css?4.4.14">
+	<link rel="stylesheet" type="text/css" href="stylesheets/status.css?4.4.14">
 	<link rel="stylesheet" type="text/css" href="stylesheets/nagios-app.css?4.4.14">
 
 	<script LANGUAGE="javascript">

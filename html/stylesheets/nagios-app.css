@@ -25,3 +25,12 @@
 	color: #666;
 	min-height: 1em;
 	}
+
+/* webui/src/hosts.ts's host detail table (table.status already comes from
+   status.css; this just adds cell padding since that stylesheet assumes
+   the old cellpadding="" HTML attribute). */
+table.status td {
+	padding: 2px 4px;
+	vertical-align: top;
+	font-size: 10pt;
+	}

@@ -52,7 +52,7 @@ perl -i -p -e "s/Copyright &copy; 2010-\d+/Copyright &copy; 2010-$YEAR/;" webui/
 perl -i -p -e "s/releasedate\">.*<\//releasedate\">$LONGDATE<\//;" webui/src/dashboard.ts
 perl -i -p -e "s/class=\"version\">Version [\d.]+/class=\"version\">Version $newversion/;" webui/src/dashboard.ts
 perl -i -p -e "s/checkforupdates\/\?version=[\d.]+/checkforupdates\/?version=$newversion/;" webui/src/dashboard.ts
-perl -i -p -e "s/(common|nagios-app)\.css\?[\d.]+/\$1.css?$newversion/g;" html/index.html.in
+perl -i -p -e "s/(common|nagios-app|status)\.css\?[\d.]+/\$1.css?$newversion/g;" html/index.html.in
 
 # Update version number and release date in common code
 perl -i -p -e "s/PROGRAM_VERSION \".*\"/PROGRAM_VERSION \"$newversion\"/;" include/common.h

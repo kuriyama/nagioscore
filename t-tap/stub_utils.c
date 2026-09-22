@@ -1,9 +1,8 @@
 
-#if defined(HAVE_SSL) && HAVE_SSL
-int my_ssl_connect(const char *host_name, int port, int *sd, SSL **ssl, SSL_CTX **ctx, int timeout) { return 0; }
-int my_ssl_sendall(int sd, SSL *ssl, const char *buf, int *len, int timeout) { return 0; }
-int my_ssl_recvall(int s, SSL *ssl, char *buf, int *len, int timeout) { return 0; }
-#endif
+/* my_ssl_connect()/my_ssl_sendall()/my_ssl_recvall() are stubbed in
+   stub_netutils.c, which every test that includes this file also
+   includes -- keeping a single definition avoids a duplicate-symbol
+   conflict between the two stub files. */
 
 void get_next_valid_time(time_t pref_time, time_t *valid_time, timeperiod *tperiod) 
 { }

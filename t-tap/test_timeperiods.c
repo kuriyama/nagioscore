@@ -41,6 +41,7 @@
 #include "../include/broker.h"
 #include "../include/nebmods.h"
 #include "../include/nebmodules.h"
+#include "../include/netutils.h"
 #include "tap.h"
 #include "stub_downtime.c"
 #include "stub_perfdata.c"
@@ -48,7 +49,7 @@
 
 /* Dummy functions */
 void logit(int data_type, int display, const char *fmt, ...) {}
-int my_sendall(int s, char *buf, int *len, int timeout) { return 0; }
+int my_sendall(int s, const char *buf, int *len, int timeout) { return 0; }
 void free_comment_data(void) {}
 int write_to_log(char *buffer, unsigned long data_type, time_t *timestamp) { return 0; }
 int log_debug_info(int level, int verbosity, const char *fmt, ...) { return 0; }
@@ -70,7 +71,7 @@ int my_ssl_sendall(int sd, SSL *ssl, const char *buf, int *len, int timeout) { r
 int my_ssl_recvall(int s, SSL *ssl, char *buf, int *len, int timeout) { return 0; }
 #endif
 
-int my_tcp_connect(char *host_name, int port, int *sd, int timeout) { return 0; }
+int my_tcp_connect(const char *host_name, int port, int *sd, int timeout) { return 0; }
 int my_recvall(int s, char *buf, int *len, int timeout) { return 0; }
 int neb_free_module_list(void) { return 0; }
 int close_command_file(void) { return 0; }

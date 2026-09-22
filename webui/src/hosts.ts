@@ -1,10 +1,12 @@
 import {
 	fetchHostStatusDetails,
 	fetchHostObjectDetails,
+	fetchHostGroups,
 	extinfoHostUrl,
 	statusCgiHostUrl,
 	type HostStatusDetails,
 	type HostObjectDetails,
+	type HostGroupDetails,
 	type HostStatusValue,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
@@ -13,10 +15,8 @@ import { formatDuration, formatTimestamp } from './format';
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
  * host, no service rows. See the plan for the full column/CSS/icon mapping.
  *
- * Sorting and auto-refresh both operate on data already held in memory
- * (sorting doesn't refetch; refresh re-fetches and re-renders in place,
- * preserving whatever sort is active) -- no new API surface needed beyond
- * what Phase A already added.
+ * Sorting/filtering re-render already-fetched data in place; refresh
+ * re-fetches and re-renders, preserving whatever sort/filter is active.
  */
 
 // Matches sample-config/cgi.cfg.in's default refresh_rate=90 (used by
@@ -175,10 +175,16 @@ function renderTableBody(
 	objects: Record<string, HostObjectDetails>,
 	queryTime: number,
 	sort: SortState,
+	memberFilter: Set<string> | null,
 ): void {
 	tbody.innerHTML = '';
 
-	const entries = Object.entries(hosts).sort((a, b) => compareHosts(a, b, sort));
+	let entries = Object.entries(hosts);
+	if (memberFilter) {
+		entries = entries.filter(([hostName]) => memberFilter.has(hostName));
+	}
+	entries = entries.sort((a, b) => compareHosts(a, b, sort));
+
 	let zebraOdd = false;
 
 	for (const [hostName, status] of entries) {
@@ -214,6 +220,15 @@ function renderTableBody(
 
 		tbody.appendChild(row);
 	}
+
+	if (entries.length === 0) {
+		const row = document.createElement('tr');
+		const cell = document.createElement('td');
+		cell.colSpan = COLUMNS.length;
+		cell.textContent = 'No hosts match this filter.';
+		row.appendChild(cell);
+		tbody.appendChild(row);
+	}
 }
 
 function sortIndicator(sort: SortState, key: SortKey): string {
@@ -226,11 +241,40 @@ export function renderHosts(container: HTMLElement): () => void {
 	container.innerHTML = '<p>Loading hosts...</p>';
 
 	const sort: SortState = { key: 'status', direction: 'asc' };
+	let selectedGroup: string | null = null;
+	let stopped = false;
+
+	// Current data, updated in place on every successful load() so that
+	// event handlers (sort clicks, filter changes) always see fresh data
+	// instead of closing over whatever was current at the time the DOM was
+	// first built.
+	let currentHosts: Record<string, HostStatusDetails> = {};
+	let currentObjects: Record<string, HostObjectDetails> = {};
+	let currentGroups: HostGroupDetails[] = [];
+	let currentQueryTime = 0;
+
 	let headerCells: HTMLTableCellElement[] = [];
 	let tbody: HTMLTableSectionElement | null = null;
+	let groupSelect: HTMLSelectElement | null = null;
 	let lastUpdatedEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
-	let stopped = false;
+
+	function currentMemberFilter(): Set<string> | null {
+		if (!selectedGroup) return null;
+		const group = currentGroups.find((g) => g.group_name === selectedGroup);
+		return group ? new Set(group.members) : null;
+	}
+
+	function rerenderTable(): void {
+		if (tbody) {
+			renderTableBody(tbody, currentHosts, currentObjects, currentQueryTime, sort, currentMemberFilter());
+		}
+		if (heading) {
+			const filter = currentMemberFilter();
+			const count = filter ? Object.keys(currentHosts).filter((h) => filter.has(h)).length : Object.keys(currentHosts).length;
+			heading.textContent = `Hosts (${count})`;
+		}
+	}
 
 	function updateHeaderLabels(): void {
 		for (const [i, col] of COLUMNS.entries()) {
@@ -238,11 +282,39 @@ export function renderHosts(container: HTMLElement): () => void {
 		}
 	}
 
+	function populateGroupSelect(): void {
+		if (!groupSelect) return;
+		const previous = groupSelect.value;
+		groupSelect.innerHTML = '';
+
+		const allOption = document.createElement('option');
+		allOption.value = '';
+		allOption.textContent = `All Host Groups (${currentGroups.length})`;
+		groupSelect.appendChild(allOption);
+
+		for (const group of [...currentGroups].sort((a, b) => a.alias.localeCompare(b.alias))) {
+			const option = document.createElement('option');
+			option.value = group.group_name;
+			option.textContent = `${group.alias} (${group.members.length})`;
+			groupSelect.appendChild(option);
+		}
+
+		// Keep the previous selection if it still exists (e.g. across a refresh).
+		if (previous && currentGroups.some((g) => g.group_name === previous)) {
+			groupSelect.value = previous;
+		}
+	}
+
 	async function load(initial: boolean): Promise<void> {
 		let statusResult;
 		let objects;
+		let groups;
 		try {
-			[statusResult, objects] = await Promise.all([fetchHostStatusDetails(), fetchHostObjectDetails()]);
+			[statusResult, objects, groups] = await Promise.all([
+				fetchHostStatusDetails(),
+				fetchHostObjectDetails(),
+				fetchHostGroups(),
+			]);
 		} catch (err) {
 			if (!initial) {
 				// Keep showing the last-good table; just surface the error.
@@ -258,13 +330,29 @@ export function renderHosts(container: HTMLElement): () => void {
 			return;
 		}
 
-		const { queryTime, hosts } = statusResult;
+		currentHosts = statusResult.hosts;
+		currentQueryTime = statusResult.queryTime;
+		currentObjects = objects;
+		currentGroups = groups;
 
 		if (initial) {
 			container.innerHTML = '';
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
+
+			const filterBar = document.createElement('div');
+			filterBar.id = 'hostsFilterBar';
+			const label = document.createElement('label');
+			label.textContent = 'Host Group: ';
+			groupSelect = document.createElement('select');
+			groupSelect.addEventListener('change', () => {
+				selectedGroup = groupSelect!.value || null;
+				rerenderTable();
+			});
+			label.appendChild(groupSelect);
+			filterBar.appendChild(label);
+			container.appendChild(filterBar);
 
 			lastUpdatedEl = document.createElement('div');
 			lastUpdatedEl.id = 'hostsLastUpdated';
@@ -287,9 +375,7 @@ export function renderHosts(container: HTMLElement): () => void {
 						sort.direction = 'asc';
 					}
 					updateHeaderLabels();
-					if (tbody) {
-						renderTableBody(tbody, hosts, objects, queryTime, sort);
-					}
+					rerenderTable();
 				});
 				headRow.appendChild(th);
 				return th;
@@ -304,15 +390,11 @@ export function renderHosts(container: HTMLElement): () => void {
 			updateHeaderLabels();
 		}
 
-		if (heading) {
-			heading.textContent = `Hosts (${Object.keys(hosts).length})`;
-		}
+		populateGroupSelect();
 		if (lastUpdatedEl) {
-			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(queryTime)}`;
+			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(currentQueryTime)}`;
 		}
-		if (tbody) {
-			renderTableBody(tbody, hosts, objects, queryTime, sort);
-		}
+		rerenderTable();
 	}
 
 	void load(true);

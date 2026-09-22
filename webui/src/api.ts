@@ -156,6 +156,24 @@ export async function fetchHostObjectDetails(): Promise<Record<string, HostObjec
 	return data.hostlist ?? {};
 }
 
+export interface HostGroupDetails {
+	group_name: string;
+	alias: string;
+	members: string[];
+}
+
+interface HostGroupListData {
+	hostgrouplist: Record<string, HostGroupDetails>;
+}
+
+export async function fetchHostGroups(): Promise<HostGroupDetails[]> {
+	const data = await fetchJson<HostGroupListData>('objectjson.cgi', {
+		query: 'hostgrouplist',
+		details: 'true',
+	});
+	return Object.values(data.hostgrouplist ?? {});
+}
+
 export function statusCgiHostUrl(hostName: string): string {
 	const url = new URL(cgiUrl('status.cgi'), window.location.href);
 	url.searchParams.set('host', hostName);

@@ -26,6 +26,11 @@
 	min-height: 1em;
 	}
 
+#hostsFilterBar {
+	margin-bottom: 6px;
+	font-size: 10pt;
+	}
+
 #hostsLastUpdated {
 	font-size: 9pt;
 	color: #666;

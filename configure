@@ -632,16 +632,11 @@ CGIEXTRAS
 USE_LIBTAP
 subdirs
 VERSION
-PACKDIR
 PATH_TO_TRACEROUTE
 nagiostats_name
 nagios_name
 BROKER_H
 BROKER_O
-WORKER_LDFLAGS
-WORKER_CFLAGS
-MOD_LDFLAGS
-MOD_CFLAGS
 BROKERLIBS
 BROKER_LDFLAGS
 cgiurl
@@ -7635,52 +7630,6 @@ rm -f core conftest.err conftest.$ac_objext \
 $as_echo "$BROKER_LDFLAGS" >&6; }
 
 
-			{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for linker flags for loadable modules" >&5
-$as_echo_n "checking for linker flags for loadable modules... " >&6; }
-	case $host_os in
-		solaris2*|sysv4*)
-			MOD_LDFLAGS="-G"
-			MOD_CFLAGS="-fPIC"
-		;;
-		aix4*|aix5*)
-			#MOD_LDFLAGS="-G -bnoentry -bexpall"
-			MOD_LDFLAGS="-G -bM:SRE -bnoentry -bexpall"
-		;;
-		freebsd2*)
-			# Non-ELF GNU linker
-			MOD_LDFLAGS="-Bshareable"
-		;;
-		darwin*)
-			# Mach-O linker, a shared lib and a loadable
-			# object file is not the same thing.
-			MOD_LDFLAGS="-bundle -flat_namespace -undefined suppress"
-			MOD_CFLAGS="$MOD_CFLAGS -fno-common"
-		;;
-		linux* | k*bsd*-gnu*)
-			# assume GNU linker and ELF
-			MOD_LDFLAGS="-shared"
-			MOD_CFLAGS="-fPIC"
-		;;
-		*bsd*)
-			MOD_LDFLAGS="-shared"
-			MOD_CFLAGS="-fPIC"
-		;;
-		*)
-			# assume GNU linker and ELF
-			MOD_LDFLAGS="-shared"
-		;;
-	esac
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $MOD_LDFLAGS" >&5
-$as_echo "$MOD_LDFLAGS" >&6; }
-
-
-
-		WORKER_CFLAGS="-I ../../include -I ../.."
-	WORKER_LDFLAGS="-L ../../lib -l nagios"
-
-
-
-
 cat >>confdefs.h <<_ACEOF
 #define USE_EVENT_BROKER /**/
 _ACEOF
@@ -7778,7 +7727,6 @@ if test "x$ENABLE_COVERAGE" = "xyes" -o "x$ENABLE_TESTING" = "xyes"; then
 fi
 
 VERSION=$PKG_VERSION
-PACKDIR=`pwd`/pkg
 
 
 
@@ -7941,7 +7889,7 @@ fi
 
 eval sbindir=$sbindir
 
-ac_config_files="$ac_config_files Makefile lib/Makefile base/Makefile common/Makefile contrib/Makefile cgi/Makefile html/Makefile module/Makefile worker/Makefile worker/ping/Makefile xdata/Makefile subst pkginfo startup/openrc-init startup/default-init startup/default-service startup/upstart-init t/Makefile t-tap/Makefile"
+ac_config_files="$ac_config_files Makefile lib/Makefile base/Makefile common/Makefile contrib/Makefile cgi/Makefile html/Makefile xdata/Makefile subst startup/openrc-init startup/default-init startup/default-service startup/upstart-init t/Makefile t-tap/Makefile"
 
 
 
@@ -8559,12 +8507,8 @@ do
     "contrib/Makefile") CONFIG_FILES="$CONFIG_FILES contrib/Makefile" ;;
     "cgi/Makefile") CONFIG_FILES="$CONFIG_FILES cgi/Makefile" ;;
     "html/Makefile") CONFIG_FILES="$CONFIG_FILES html/Makefile" ;;
-    "module/Makefile") CONFIG_FILES="$CONFIG_FILES module/Makefile" ;;
-    "worker/Makefile") CONFIG_FILES="$CONFIG_FILES worker/Makefile" ;;
-    "worker/ping/Makefile") CONFIG_FILES="$CONFIG_FILES worker/ping/Makefile" ;;
     "xdata/Makefile") CONFIG_FILES="$CONFIG_FILES xdata/Makefile" ;;
     "subst") CONFIG_FILES="$CONFIG_FILES subst" ;;
-    "pkginfo") CONFIG_FILES="$CONFIG_FILES pkginfo" ;;
     "startup/openrc-init") CONFIG_FILES="$CONFIG_FILES startup/openrc-init" ;;
     "startup/default-init") CONFIG_FILES="$CONFIG_FILES startup/default-init" ;;
     "startup/default-service") CONFIG_FILES="$CONFIG_FILES startup/default-service" ;;

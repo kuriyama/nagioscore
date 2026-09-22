@@ -728,52 +728,6 @@ if test "x$USE_EVENTBROKER" = "xyes"; then
 	test "x$BROKER_LDFLAGS" != "x" && AC_MSG_RESULT([$BROKER_LDFLAGS])
 
 
-	dnl - Modified version from www.erlang.org
-	dnl - Some 12/15/05 mods made after reading http://xaxxon.slackworks.com/phuku/dl.html
-	AC_MSG_CHECKING(for linker flags for loadable modules)
-	case $host_os in
-		solaris2*|sysv4*)
-			MOD_LDFLAGS="-G"
-			MOD_CFLAGS="-fPIC"
-		;;
-		aix4*|aix5*)
-			#MOD_LDFLAGS="-G -bnoentry -bexpall"
-			MOD_LDFLAGS="-G -bM:SRE -bnoentry -bexpall"
-		;;
-		freebsd2*)
-			# Non-ELF GNU linker
-			MOD_LDFLAGS="-Bshareable"
-		;;
-		darwin*)
-			# Mach-O linker, a shared lib and a loadable
-			# object file is not the same thing.
-			MOD_LDFLAGS="-bundle -flat_namespace -undefined suppress"
-			MOD_CFLAGS="$MOD_CFLAGS -fno-common"
-		;;
-		linux* | k*bsd*-gnu*)
-			# assume GNU linker and ELF
-			MOD_LDFLAGS="-shared"
-			MOD_CFLAGS="-fPIC"
-		;;
-		*bsd*)
-			MOD_LDFLAGS="-shared"
-			MOD_CFLAGS="-fPIC"
-		;;
-		*)
-			# assume GNU linker and ELF
-			MOD_LDFLAGS="-shared"
-		;;
-	esac
-	AC_MSG_RESULT([$MOD_LDFLAGS])
-	AC_SUBST(MOD_CFLAGS)
-	AC_SUBST(MOD_LDFLAGS)
-
-	dnl - flags for compiling workers
-	WORKER_CFLAGS="-I ../../include -I ../.."
-	WORKER_LDFLAGS="-L ../../lib -l nagios"
-	AC_SUBST(WORKER_CFLAGS)
-	AC_SUBST(WORKER_LDFLAGS)
-
 	AC_DEFINE_UNQUOTED(USE_EVENT_BROKER,,[defined to bring in the event broker objects])
 	BROKER_O="broker.o nebmods.o"
 	AC_SUBST(BROKER_O)
@@ -827,11 +781,8 @@ if test "x$ENABLE_COVERAGE" = "xyes" -o "x$ENABLE_TESTING" = "xyes"; then
 	CFLAGS="${CFLAGS} -fprofile-arcs -ftest-coverage"
 fi
 
-dnl Package directory for Solaris pkgmk (and other OSs, eventually)
 dnl VERSION=`grep 1.0 include/common.h | cut -d ' ' -f 3 | sed 's/"//g'`
 VERSION=$PKG_VERSION
-PACKDIR=`pwd`/pkg
-AC_SUBST(PACKDIR)
 AC_SUBST(VERSION)
  
 AC_MSG_CHECKING(for type va_list)
@@ -904,12 +855,8 @@ AC_OUTPUT([
 	contrib/Makefile
 	cgi/Makefile
 	html/Makefile
-	module/Makefile
-	worker/Makefile
-	worker/ping/Makefile
 	xdata/Makefile
 	subst
-	pkginfo
 	startup/openrc-init
 	startup/default-init
 	startup/default-service

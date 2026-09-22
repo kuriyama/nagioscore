@@ -305,3 +305,153 @@ export function extinfoServiceUrl(hostName: string, description: string): string
 	url.searchParams.set('service', description);
 	return url.toString();
 }
+
+/**
+ * archivejson.cgi's statechangelist/availability queries, used by trends.ts.
+ * Response shapes confirmed against cgi/archivejson.c
+ * (json_archive_statechangelist/json_archive_availability et al) -- see
+ * archiveutils.c's svm_au_states/svm_au_object_types/svm_au_state_types for
+ * the enumerated string values ("formatoptions=enumerate" is always passed
+ * here, matching the legacy AngularJS trends-form.js this replaces).
+ */
+
+export type ArchiveObjectType = 'host' | 'service';
+export type TrendsReportType = 'hosts' | 'services';
+
+/** svm_au_states: host states + service states + a few pseudo-states used
+    for "Initial .. Pseudo-State"/"Final .. Pseudo-State" bookend entries. */
+export type ArchiveState =
+	| 'nodata'
+	| 'up'
+	| 'down'
+	| 'unreachable'
+	| 'ok'
+	| 'warning'
+	| 'critical'
+	| 'unknown'
+	| 'programstart'
+	| 'programend'
+	| 'downtimestart'
+	| 'downtimeend'
+	| 'currentstate';
+
+export interface StateChangeEntry {
+	timestamp: number;
+	object_type: ArchiveObjectType;
+	/** present when object_type === 'host' */
+	name?: string;
+	/** present when object_type === 'service' */
+	host_name?: string;
+	description?: string;
+	state_type: 'hard' | 'soft' | 'nodata';
+	state: ArchiveState;
+	plugin_output: string;
+}
+
+interface StateChangeListData {
+	selectors: { starttime?: number; endtime?: number };
+	statechangelist: StateChangeEntry[];
+}
+
+export interface StateChangeListParams {
+	reportType: TrendsReportType;
+	host: string;
+	service?: string;
+	startTime: number;
+	endTime: number;
+	includeSoftStates: boolean;
+	backtrackedArchives: number;
+}
+
+export async function fetchStateChangeList(p: StateChangeListParams): Promise<StateChangeListData> {
+	const params: Record<string, string> = {
+		query: 'statechangelist',
+		formatoptions: 'enumerate bitmask',
+		objecttype: p.reportType === 'hosts' ? 'host' : 'service',
+		hostname: p.host,
+		starttime: String(p.startTime),
+		endtime: String(p.endTime),
+		statetypes: p.includeSoftStates ? 'hard soft' : 'hard',
+		backtrackedarchives: String(p.backtrackedArchives),
+	};
+	if (p.reportType === 'services' && p.service) {
+		params.servicedescription = p.service;
+	}
+	return fetchJson<StateChangeListData>('archivejson.cgi', params);
+}
+
+/** json_archive_host_availability -- duration fields are raw seconds
+    (numbers) since "formatoptions=duration" is deliberately not passed. */
+export interface HostAvailability {
+	name?: string;
+	time_up: number;
+	time_down: number;
+	time_unreachable: number;
+	scheduled_time_up: number;
+	scheduled_time_down: number;
+	scheduled_time_unreachable: number;
+	time_indeterminate_nodata: number;
+	time_indeterminate_notrunning: number;
+}
+
+/** json_archive_service_availability */
+export interface ServiceAvailability {
+	host_name?: string;
+	description?: string;
+	time_ok: number;
+	time_warning: number;
+	time_critical: number;
+	time_unknown: number;
+	scheduled_time_ok: number;
+	scheduled_time_warning: number;
+	scheduled_time_critical: number;
+	scheduled_time_unknown: number;
+	time_indeterminate_nodata: number;
+	time_indeterminate_notrunning: number;
+}
+
+interface AvailabilityData {
+	host?: HostAvailability;
+	service?: ServiceAvailability;
+}
+
+export interface AvailabilityParams {
+	reportType: TrendsReportType;
+	host: string;
+	service?: string;
+	startTime: number;
+	endTime: number;
+	includeSoftStates: boolean;
+}
+
+export async function fetchAvailability(p: AvailabilityParams): Promise<AvailabilityData> {
+	const params: Record<string, string> = {
+		query: 'availability',
+		formatoptions: 'enumerate bitmask',
+		availabilityobjecttype: p.reportType,
+		hostname: p.host,
+		statetypes: p.includeSoftStates ? 'hard soft' : 'hard',
+		starttime: String(p.startTime),
+		endtime: String(p.endTime),
+	};
+	if (p.reportType === 'services' && p.service) {
+		params.servicedescription = p.service;
+	}
+	return fetchJson<AvailabilityData>('archivejson.cgi', params);
+}
+
+/** trends.cgi's PNG-image export (unchanged C/gd rendering) -- kept as an
+    export/print link from the new SPA view rather than ported. */
+export function trendsPngUrl(p: StateChangeListParams): string {
+	const url = new URL(cgiUrl('trends.cgi'), window.location.href);
+	url.searchParams.set('host', p.host);
+	if (p.reportType === 'services' && p.service) {
+		url.searchParams.set('service', p.service);
+	}
+	url.searchParams.set('t1', String(p.startTime));
+	url.searchParams.set('t2', String(p.endTime));
+	if (p.includeSoftStates) {
+		url.searchParams.set('includesoftstates', 'yes');
+	}
+	return url.toString();
+}

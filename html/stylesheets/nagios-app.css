@@ -115,3 +115,27 @@ table.status td {
 .modalButtons button {
 	margin-left: 6px;
 	}
+
+.trendsForm label {
+	display: inline-block;
+	margin: 4px 0;
+	}
+
+.trendsLegend {
+	margin: 10px 0;
+	}
+
+.trendsLegendItem {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 16px;
+	font-size: 10pt;
+	}
+
+.trendsLegendSwatch {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	margin-right: 4px;
+	border: 1px solid #888;
+	}

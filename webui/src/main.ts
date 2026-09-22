@@ -3,6 +3,7 @@ import { renderDashboard } from './dashboard';
 import { renderHosts } from './hosts';
 import { renderServices } from './services';
 import { installDebugHelper, logRouteSnapshot } from './debug';
+import { renderTrends } from './trends';
 
 let activeViewCleanup: (() => void) | null = null;
 
@@ -17,6 +18,8 @@ function renderRoute(dashboardEl: HTMLElement): void {
 		activeViewCleanup = renderHosts(dashboardEl);
 	} else if (window.location.hash === '#services') {
 		activeViewCleanup = renderServices(dashboardEl);
+	} else if (window.location.hash === '#trends') {
+		activeViewCleanup = renderTrends(dashboardEl);
 	} else {
 		renderDashboard(dashboardEl);
 	}

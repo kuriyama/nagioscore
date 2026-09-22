@@ -80,7 +80,7 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 			title: 'Reports',
 			links: [
 				{ label: 'Availability', href: `${cgiUrl}/avail.cgi` },
-				{ label: 'Trends', href: 'trends.html', legacyHref: `${cgiUrl}/trends.cgi` },
+				{ label: 'Trends', href: '#trends', legacyHref: `${cgiUrl}/trends.cgi` },
 				{ label: 'Alerts / History', href: `${cgiUrl}/history.cgi?host=all` },
 				{ label: 'Alerts / Summary', href: `${cgiUrl}/summary.cgi` },
 				{ label: 'Histogram', href: 'histogram.html', legacyHref: `${cgiUrl}/histogram.cgi` },

@@ -1,52 +1,52 @@
 import {
-	fetchHostStatusDetails,
-	fetchHostObjectDetails,
-	fetchHostGroups,
+	fetchServiceStatusDetails,
+	fetchServiceObjectDetails,
+	fetchServiceGroups,
 	extinfoHostUrl,
-	statusCgiHostUrl,
-	type HostStatusDetails,
-	type HostObjectDetails,
-	type HostGroupDetails,
-	type HostStatusValue,
+	extinfoServiceUrl,
+	type ServiceStatusEntry,
+	type ServiceObjectDetails,
+	type ServiceGroupDetails,
+	type ServiceStatusValue,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
 
 /**
- * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
- * host, no service rows. See the plan for the full column/CSS/icon mapping.
- *
- * Sorting/filtering re-render already-fetched data in place; refresh
- * re-fetches and re-renders, preserving whatever sort/filter is active.
+ * Port of cgi/status.c's show_service_detail() (the "Services" nav link,
+ * status.cgi?host=all): one row per host+service pair. Same design as
+ * hosts.ts (flat table, no virtualization, sort/refresh/group-filter
+ * operate on already-fetched data).
  */
 
-// Matches sample-config/cgi.cfg.in's default refresh_rate=90 (used by
-// status.cgi/statusmap.cgi/extinfo.cgi/outages.cgi) for consistency.
+// Matches sample-config/cgi.cfg.in's default refresh_rate=90, same as hosts.ts.
 const REFRESH_INTERVAL_MS = 90_000;
 
-const STATUS_LABEL: Record<HostStatusValue, string> = {
-	up: 'UP',
-	down: 'DOWN',
-	unreachable: 'UNREACHABLE',
+const STATUS_LABEL: Record<ServiceStatusValue, string> = {
+	ok: 'OK',
+	warning: 'WARNING',
+	unknown: 'UNKNOWN',
+	critical: 'CRITICAL',
 	pending: 'PENDING',
 };
 
-const STATUS_CLASS: Record<HostStatusValue, string> = {
-	up: 'statusHOSTUP',
-	down: 'statusHOSTDOWN',
-	unreachable: 'statusHOSTUNREACHABLE',
-	pending: 'statusHOSTPENDING',
+const STATUS_CLASS: Record<ServiceStatusValue, string> = {
+	ok: 'statusOK',
+	warning: 'statusWARNING',
+	unknown: 'statusUNKNOWN',
+	critical: 'statusCRITICAL',
+	pending: 'statusPENDING',
 };
 
-// Ascending order here means "problems first", which is the natural default
-// for a status view.
-const STATUS_SEVERITY: Record<HostStatusValue, number> = {
-	down: 0,
-	unreachable: 1,
-	pending: 2,
-	up: 3,
+// Ascending order here means "problems first".
+const STATUS_SEVERITY: Record<ServiceStatusValue, number> = {
+	critical: 0,
+	warning: 1,
+	unknown: 2,
+	pending: 3,
+	ok: 4,
 };
 
-type SortKey = 'host' | 'status' | 'lastCheck' | 'duration' | 'info';
+type SortKey = 'host' | 'service' | 'status' | 'lastCheck' | 'duration' | 'attempt' | 'info';
 type SortDirection = 'asc' | 'desc';
 
 interface SortState {
@@ -56,51 +56,64 @@ interface SortState {
 
 const COLUMNS: { key: SortKey; label: string }[] = [
 	{ key: 'host', label: 'Host' },
+	{ key: 'service', label: 'Service' },
 	{ key: 'status', label: 'Status' },
 	{ key: 'lastCheck', label: 'Last Check' },
 	{ key: 'duration', label: 'Duration' },
+	{ key: 'attempt', label: 'Attempt' },
 	{ key: 'info', label: 'Status Information' },
 ];
 
-function compareHosts(
-	[nameA, statusA]: [string, HostStatusDetails],
-	[nameB, statusB]: [string, HostStatusDetails],
-	sort: SortState,
-): number {
+function serviceKey(hostName: string, description: string): string {
+	return `${hostName}\u0000${description}`;
+}
+
+function compareServices(a: ServiceStatusEntry, b: ServiceStatusEntry, sort: SortState): number {
 	let cmp: number;
 	switch (sort.key) {
 		case 'host':
-			cmp = nameA.localeCompare(nameB);
+			cmp = a.hostName.localeCompare(b.hostName);
+			break;
+		case 'service':
+			cmp = a.description.localeCompare(b.description);
 			break;
 		case 'status':
-			cmp = STATUS_SEVERITY[statusA.status] - STATUS_SEVERITY[statusB.status];
+			cmp = STATUS_SEVERITY[a.status.status] - STATUS_SEVERITY[b.status.status];
 			break;
 		case 'lastCheck':
-			cmp = statusA.last_check - statusB.last_check;
+			cmp = a.status.last_check - b.status.last_check;
 			break;
 		case 'duration':
-			cmp = statusA.last_state_change - statusB.last_state_change;
+			cmp = a.status.last_state_change - b.status.last_state_change;
+			break;
+		case 'attempt':
+			cmp = a.status.current_attempt - b.status.current_attempt;
 			break;
 		case 'info':
-			cmp = statusA.plugin_output.localeCompare(statusB.plugin_output);
+			cmp = a.status.plugin_output.localeCompare(b.status.plugin_output);
 			break;
 	}
 	if (cmp === 0) {
-		cmp = nameA.localeCompare(nameB);
+		cmp = a.hostName.localeCompare(b.hostName) || a.description.localeCompare(b.description);
 	}
 	return sort.direction === 'asc' ? cmp : -cmp;
 }
 
-function bgClass(status: HostStatusValue, acknowledged: boolean, inDowntime: boolean, zebraOdd: boolean): string {
-	if (status === 'down') {
-		if (acknowledged) return 'statusBGDOWNACK';
-		if (inDowntime) return 'statusBGDOWNSCHED';
-		return 'statusBGDOWN';
+function bgClass(status: ServiceStatusValue, acknowledged: boolean, inDowntime: boolean, zebraOdd: boolean): string {
+	if (status === 'critical') {
+		if (acknowledged) return 'statusBGCRITICALACK';
+		if (inDowntime) return 'statusBGCRITICALSCHED';
+		return 'statusBGCRITICAL';
 	}
-	if (status === 'unreachable') {
-		if (acknowledged) return 'statusBGUNREACHABLEACK';
-		if (inDowntime) return 'statusBGUNREACHABLESCHED';
-		return 'statusBGUNREACHABLE';
+	if (status === 'warning') {
+		if (acknowledged) return 'statusBGWARNINGACK';
+		if (inDowntime) return 'statusBGWARNINGSCHED';
+		return 'statusBGWARNING';
+	}
+	if (status === 'unknown') {
+		if (acknowledged) return 'statusBGUNKNOWNACK';
+		if (inDowntime) return 'statusBGUNKNOWNSCHED';
+		return 'statusBGUNKNOWN';
 	}
 	return zebraOdd ? 'statusOdd' : 'statusEven';
 }
@@ -121,49 +134,44 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	}
 }
 
-function renderHostCell(hostName: string, status: HostStatusDetails, obj: HostObjectDetails | undefined): HTMLTableCellElement {
+function renderServiceCell(entry: ServiceStatusEntry, obj: ServiceObjectDetails | undefined): HTMLTableCellElement {
 	const td = document.createElement('td');
 
 	const nameLine = document.createElement('div');
 	const nameLink = document.createElement('a');
-	nameLink.href = extinfoHostUrl(hostName);
-	nameLink.textContent = hostName;
-	if (obj?.address) {
-		nameLink.title = obj.address;
-	}
+	nameLink.href = extinfoServiceUrl(entry.hostName, entry.description);
+	nameLink.textContent = entry.description;
 	nameLine.appendChild(nameLink);
 	td.appendChild(nameLine);
 
 	const iconLine = document.createElement('div');
-	if (status.problem_has_been_acknowledged) {
+	const s = entry.status;
+	if (s.problem_has_been_acknowledged) {
 		icon(iconLine, 'ack.gif', 'This problem has been acknowledged');
 	}
-	if (!status.notifications_enabled) {
-		icon(iconLine, 'ndisabled.gif', 'Notifications for this host have been disabled');
+	if (!s.notifications_enabled) {
+		icon(iconLine, 'ndisabled.gif', 'Notifications for this service have been disabled');
 	}
-	if (!status.checks_enabled && !status.accept_passive_checks) {
-		icon(iconLine, 'disabled.gif', 'Active and passive checks have been disabled for this host');
-	} else if (!status.checks_enabled) {
-		icon(iconLine, 'passiveonly.gif', 'Active checks have been disabled for this host, only passive checks are being accepted');
+	if (!s.checks_enabled && !s.accept_passive_checks) {
+		icon(iconLine, 'disabled.gif', 'Active and passive checks have been disabled for this service');
+	} else if (!s.checks_enabled) {
+		icon(iconLine, 'passiveonly.gif', 'Active checks have been disabled for this service, only passive checks are being accepted');
 	}
-	if (status.is_flapping) {
-		icon(iconLine, 'flapping.gif', 'This host is flapping between states');
+	if (s.is_flapping) {
+		icon(iconLine, 'flapping.gif', 'This service is flapping between states');
 	}
-	if (status.scheduled_downtime_depth > 0) {
-		icon(iconLine, 'downtime.gif', 'This host is currently in a period of scheduled downtime');
+	if (s.scheduled_downtime_depth > 0) {
+		icon(iconLine, 'downtime.gif', 'This service is currently in a period of scheduled downtime');
 	}
 	if (obj?.notes_url) {
-		icon(iconLine, 'notes.gif', 'View extra host notes', obj.notes_url);
+		icon(iconLine, 'notes.gif', 'View extra service notes', obj.notes_url);
 	}
 	if (obj?.action_url) {
-		icon(iconLine, 'action.gif', 'Perform extra host actions', obj.action_url);
+		icon(iconLine, 'action.gif', 'Perform extra service actions', obj.action_url);
 	}
 	if (obj?.icon_image) {
-		// Convention: icon_image is relative to images/logos/, matching how
-		// nagios object config traditionally references them.
-		icon(iconLine, `logos/${obj.icon_image}`, hostName);
+		icon(iconLine, `logos/${obj.icon_image}`, entry.description);
 	}
-	icon(iconLine, 'status2.gif', 'View the status of all services for this host', statusCgiHostUrl(hostName));
 	td.appendChild(iconLine);
 
 	return td;
@@ -171,51 +179,62 @@ function renderHostCell(hostName: string, status: HostStatusDetails, obj: HostOb
 
 function renderTableBody(
 	tbody: HTMLTableSectionElement,
-	hosts: Record<string, HostStatusDetails>,
-	objects: Record<string, HostObjectDetails>,
+	services: ServiceStatusEntry[],
+	objects: Map<string, ServiceObjectDetails>,
 	queryTime: number,
 	sort: SortState,
 	memberFilter: Set<string> | null,
 ): void {
 	tbody.innerHTML = '';
 
-	let entries = Object.entries(hosts);
-	if (memberFilter) {
-		entries = entries.filter(([hostName]) => memberFilter.has(hostName));
-	}
-	entries = entries.sort((a, b) => compareHosts(a, b, sort));
+	let entries = memberFilter ? services.filter((e) => memberFilter.has(serviceKey(e.hostName, e.description))) : services;
+	entries = [...entries].sort((a, b) => compareServices(a, b, sort));
 
 	let zebraOdd = false;
 
-	for (const [hostName, status] of entries) {
-		const obj = objects[hostName];
+	for (const entry of entries) {
+		const s = entry.status;
+		const obj = objects.get(serviceKey(entry.hostName, entry.description));
 
 		const row = document.createElement('tr');
-		row.appendChild(renderHostCell(hostName, status, obj));
+
+		const hostCell = document.createElement('td');
+		const hostLink = document.createElement('a');
+		hostLink.href = extinfoHostUrl(entry.hostName);
+		hostLink.textContent = entry.hostName;
+		hostCell.appendChild(hostLink);
+		row.appendChild(hostCell);
+
+		row.appendChild(renderServiceCell(entry, obj));
 
 		const statusCell = document.createElement('td');
-		statusCell.className = STATUS_CLASS[status.status];
-		statusCell.textContent = STATUS_LABEL[status.status];
+		statusCell.className = STATUS_CLASS[s.status];
+		statusCell.textContent = STATUS_LABEL[s.status];
 		row.appendChild(statusCell);
 
-		const bg = bgClass(status.status, status.problem_has_been_acknowledged, status.scheduled_downtime_depth > 0, zebraOdd);
-		if (status.status === 'up' || status.status === 'pending') {
+		const bg = bgClass(s.status, s.problem_has_been_acknowledged, s.scheduled_downtime_depth > 0, zebraOdd);
+		if (s.status === 'ok' || s.status === 'pending') {
 			zebraOdd = !zebraOdd;
 		}
 
 		const lastCheckCell = document.createElement('td');
 		lastCheckCell.className = bg;
-		lastCheckCell.textContent = formatTimestamp(status.last_check);
+		lastCheckCell.textContent = formatTimestamp(s.last_check);
 		row.appendChild(lastCheckCell);
 
 		const durationCell = document.createElement('td');
 		durationCell.className = bg;
-		durationCell.textContent = formatDuration(queryTime, status.last_state_change, status.last_state_change === 0);
+		durationCell.textContent = formatDuration(queryTime, s.last_state_change, s.last_state_change === 0);
 		row.appendChild(durationCell);
+
+		const attemptCell = document.createElement('td');
+		attemptCell.className = bg;
+		attemptCell.textContent = `${s.current_attempt}/${s.max_attempts}`;
+		row.appendChild(attemptCell);
 
 		const infoCell = document.createElement('td');
 		infoCell.className = bg;
-		infoCell.textContent = status.plugin_output;
+		infoCell.textContent = s.plugin_output;
 		row.appendChild(infoCell);
 
 		tbody.appendChild(row);
@@ -225,7 +244,7 @@ function renderTableBody(
 		const row = document.createElement('tr');
 		const cell = document.createElement('td');
 		cell.colSpan = COLUMNS.length;
-		cell.textContent = 'No hosts match this filter.';
+		cell.textContent = 'No services match this filter.';
 		row.appendChild(cell);
 		tbody.appendChild(row);
 	}
@@ -237,20 +256,16 @@ function sortIndicator(sort: SortState, key: SortKey): string {
 }
 
 /** Returns a cleanup function the caller should invoke when navigating away (stops auto-refresh). */
-export function renderHosts(container: HTMLElement): () => void {
-	container.innerHTML = '<p>Loading hosts...</p>';
+export function renderServices(container: HTMLElement): () => void {
+	container.innerHTML = '<p>Loading services...</p>';
 
 	const sort: SortState = { key: 'status', direction: 'asc' };
 	let selectedGroup: string | null = null;
 	let stopped = false;
 
-	// Current data, updated in place on every successful load() so that
-	// event handlers (sort clicks, filter changes) always see fresh data
-	// instead of closing over whatever was current at the time the DOM was
-	// first built.
-	let currentHosts: Record<string, HostStatusDetails> = {};
-	let currentObjects: Record<string, HostObjectDetails> = {};
-	let currentGroups: HostGroupDetails[] = [];
+	let currentServices: ServiceStatusEntry[] = [];
+	let currentObjects: Map<string, ServiceObjectDetails> = new Map();
+	let currentGroups: ServiceGroupDetails[] = [];
 	let currentQueryTime = 0;
 
 	let headerCells: HTMLTableCellElement[] = [];
@@ -262,17 +277,20 @@ export function renderHosts(container: HTMLElement): () => void {
 	function currentMemberFilter(): Set<string> | null {
 		if (!selectedGroup) return null;
 		const group = currentGroups.find((g) => g.group_name === selectedGroup);
-		return group ? new Set(group.members) : null;
+		if (!group) return null;
+		return new Set(group.members.map((m) => serviceKey(m.host_name, m.service_description)));
 	}
 
 	function rerenderTable(): void {
 		if (tbody) {
-			renderTableBody(tbody, currentHosts, currentObjects, currentQueryTime, sort, currentMemberFilter());
+			renderTableBody(tbody, currentServices, currentObjects, currentQueryTime, sort, currentMemberFilter());
 		}
 		if (heading) {
 			const filter = currentMemberFilter();
-			const count = filter ? Object.keys(currentHosts).filter((h) => filter.has(h)).length : Object.keys(currentHosts).length;
-			heading.textContent = `Hosts (${count})`;
+			const count = filter
+				? currentServices.filter((e) => filter.has(serviceKey(e.hostName, e.description))).length
+				: currentServices.length;
+			heading.textContent = `Services (${count})`;
 		}
 	}
 
@@ -289,7 +307,7 @@ export function renderHosts(container: HTMLElement): () => void {
 
 		const allOption = document.createElement('option');
 		allOption.value = '';
-		allOption.textContent = `All Host Groups (${currentGroups.length})`;
+		allOption.textContent = `All Service Groups (${currentGroups.length})`;
 		groupSelect.appendChild(allOption);
 
 		for (const group of [...currentGroups].sort((a, b) => a.alias.localeCompare(b.alias))) {
@@ -299,7 +317,6 @@ export function renderHosts(container: HTMLElement): () => void {
 			groupSelect.appendChild(option);
 		}
 
-		// Keep the previous selection if it still exists (e.g. across a refresh).
 		if (previous && currentGroups.some((g) => g.group_name === previous)) {
 			groupSelect.value = previous;
 		}
@@ -311,13 +328,12 @@ export function renderHosts(container: HTMLElement): () => void {
 		let groups;
 		try {
 			[statusResult, objects, groups] = await Promise.all([
-				fetchHostStatusDetails(),
-				fetchHostObjectDetails(),
-				fetchHostGroups(),
+				fetchServiceStatusDetails(),
+				fetchServiceObjectDetails(),
+				fetchServiceGroups(),
 			]);
 		} catch (err) {
 			if (!initial) {
-				// Keep showing the last-good table; just surface the error.
 				if (lastUpdatedEl) {
 					lastUpdatedEl.textContent = `Refresh failed: ${err instanceof Error ? err.message : String(err)}`;
 				}
@@ -325,12 +341,12 @@ export function renderHosts(container: HTMLElement): () => void {
 			}
 			container.innerHTML = '';
 			const p = document.createElement('p');
-			p.textContent = `Failed to load host status: ${err instanceof Error ? err.message : String(err)}`;
+			p.textContent = `Failed to load service status: ${err instanceof Error ? err.message : String(err)}`;
 			container.appendChild(p);
 			return;
 		}
 
-		currentHosts = statusResult.hosts;
+		currentServices = statusResult.services;
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
 		currentGroups = groups;
@@ -344,7 +360,7 @@ export function renderHosts(container: HTMLElement): () => void {
 			const filterBar = document.createElement('div');
 			filterBar.id = 'detailFilterBar';
 			const label = document.createElement('label');
-			label.textContent = 'Host Group: ';
+			label.textContent = 'Service Group: ';
 			groupSelect = document.createElement('select');
 			groupSelect.addEventListener('change', () => {
 				selectedGroup = groupSelect!.value || null;

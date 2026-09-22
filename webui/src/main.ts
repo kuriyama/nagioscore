@@ -1,6 +1,7 @@
 import { renderNav } from './nav';
 import { renderDashboard } from './dashboard';
 import { renderHosts } from './hosts';
+import { renderServices } from './services';
 
 let activeViewCleanup: (() => void) | null = null;
 
@@ -12,6 +13,8 @@ function renderRoute(dashboardEl: HTMLElement): void {
 
 	if (window.location.hash === '#hosts') {
 		activeViewCleanup = renderHosts(dashboardEl);
+	} else if (window.location.hash === '#services') {
+		activeViewCleanup = renderServices(dashboardEl);
 	} else {
 		renderDashboard(dashboardEl);
 	}

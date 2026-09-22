@@ -156,6 +156,103 @@ export async function fetchHostObjectDetails(): Promise<Record<string, HostObjec
 	return data.hostlist ?? {};
 }
 
+/** statusjson.cgi's service state enum (ok/warning/critical/unknown/pending). */
+export type ServiceStatusValue = 'ok' | 'warning' | 'unknown' | 'critical' | 'pending';
+
+export interface ServiceStatusDetails {
+	status: ServiceStatusValue;
+	plugin_output: string;
+	last_check: number;
+	last_state_change: number;
+	notifications_enabled: boolean;
+	checks_enabled: boolean;
+	accept_passive_checks: boolean;
+	is_flapping: boolean;
+	scheduled_downtime_depth: number;
+	problem_has_been_acknowledged: boolean;
+	current_attempt: number;
+	max_attempts: number;
+}
+
+/** { hostName: { serviceDescription: details } } */
+interface ServiceStatusListData {
+	servicelist: Record<string, Record<string, ServiceStatusDetails>>;
+}
+
+export interface ServiceStatusEntry {
+	hostName: string;
+	description: string;
+	status: ServiceStatusDetails;
+}
+
+export interface ServiceStatusResult {
+	queryTime: number;
+	services: ServiceStatusEntry[];
+}
+
+export async function fetchServiceStatusDetails(): Promise<ServiceStatusResult> {
+	const { data, queryTime } = await fetchJsonWithResult<ServiceStatusListData>('statusjson.cgi', {
+		query: 'servicelist',
+		details: 'true',
+	});
+	const services: ServiceStatusEntry[] = [];
+	for (const [hostName, byDescription] of Object.entries(data.servicelist ?? {})) {
+		for (const [description, status] of Object.entries(byDescription)) {
+			services.push({ hostName, description, status });
+		}
+	}
+	return { queryTime, services };
+}
+
+export interface ServiceObjectDetails {
+	notes_url?: string;
+	action_url?: string;
+	icon_image?: string;
+}
+
+/** { hostName: { serviceDescription: details } } */
+interface ServiceObjectListData {
+	servicelist: Record<string, Record<string, ServiceObjectDetails>>;
+}
+
+/** Keyed by "hostName\u0000description" for O(1) lookup per row. */
+export async function fetchServiceObjectDetails(): Promise<Map<string, ServiceObjectDetails>> {
+	const data = await fetchJson<ServiceObjectListData>('objectjson.cgi', {
+		query: 'servicelist',
+		details: 'true',
+	});
+	const out = new Map<string, ServiceObjectDetails>();
+	for (const [hostName, byDescription] of Object.entries(data.servicelist ?? {})) {
+		for (const [description, details] of Object.entries(byDescription)) {
+			out.set(`${hostName}\u0000${description}`, details);
+		}
+	}
+	return out;
+}
+
+export interface ServiceGroupMember {
+	host_name: string;
+	service_description: string;
+}
+
+export interface ServiceGroupDetails {
+	group_name: string;
+	alias: string;
+	members: ServiceGroupMember[];
+}
+
+interface ServiceGroupListData {
+	servicegrouplist: Record<string, ServiceGroupDetails>;
+}
+
+export async function fetchServiceGroups(): Promise<ServiceGroupDetails[]> {
+	const data = await fetchJson<ServiceGroupListData>('objectjson.cgi', {
+		query: 'servicegrouplist',
+		details: 'true',
+	});
+	return Object.values(data.servicegrouplist ?? {});
+}
+
 export interface HostGroupDetails {
 	group_name: string;
 	alias: string;

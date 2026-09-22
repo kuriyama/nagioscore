@@ -26,20 +26,20 @@
 	min-height: 1em;
 	}
 
-#hostsFilterBar {
+#detailFilterBar {
 	margin-bottom: 6px;
 	font-size: 10pt;
 	}
 
-#hostsLastUpdated {
+#detailLastUpdated {
 	font-size: 9pt;
 	color: #666;
 	margin-bottom: 6px;
 	}
 
-/* webui/src/hosts.ts's host detail table (table.status already comes from
-   status.css; this just adds cell padding since that stylesheet assumes
-   the old cellpadding="" HTML attribute). */
+/* webui/src/hosts.ts and webui/src/services.ts's detail tables (table.status
+   already comes from status.css; this just adds cell padding since that
+   stylesheet assumes the old cellpadding="" HTML attribute). */
 table.status td {
 	padding: 2px 4px;
 	vertical-align: top;

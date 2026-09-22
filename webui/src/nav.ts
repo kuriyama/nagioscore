@@ -37,7 +37,7 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 				{ label: 'Tactical Overview', href: `${cgiUrl}/tac.cgi` },
 				{ label: 'Map', href: `${cgiUrl}/statusmap.cgi?host=all` },
 				{ label: 'Hosts', href: '#hosts' },
-				{ label: 'Services', href: `${cgiUrl}/status.cgi?host=all` },
+				{ label: 'Services', href: '#services' },
 				{
 					label: 'Host Groups',
 					href: `${cgiUrl}/status.cgi?hostgroup=all&style=overview`,

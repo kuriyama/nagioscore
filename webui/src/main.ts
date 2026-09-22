@@ -2,6 +2,7 @@ import { renderNav } from './nav';
 import { renderDashboard } from './dashboard';
 import { renderHosts } from './hosts';
 import { renderServices } from './services';
+import { installDebugHelper, logRouteSnapshot } from './debug';
 
 let activeViewCleanup: (() => void) | null = null;
 
@@ -11,6 +12,7 @@ function renderRoute(dashboardEl: HTMLElement): void {
 		activeViewCleanup = null;
 	}
 
+	const start = performance.now();
 	if (window.location.hash === '#hosts') {
 		activeViewCleanup = renderHosts(dashboardEl);
 	} else if (window.location.hash === '#services') {
@@ -18,9 +20,12 @@ function renderRoute(dashboardEl: HTMLElement): void {
 	} else {
 		renderDashboard(dashboardEl);
 	}
+	logRouteSnapshot(performance.now() - start);
 }
 
 function main(): void {
+	installDebugHelper();
+
 	// The server name isn't known until request time, so it can't be baked
 	// in at build time the way cgiUrl below is.
 	document.title = `Nagios: ${window.location.hostname}`;

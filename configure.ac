@@ -21,7 +21,7 @@ AC_SUBST(INSTALL)
 dnl What OS are we running?
 AC_CANONICAL_HOST
 
-AC_CONFIG_FILES([html/index.php])
+AC_CONFIG_FILES([html/index.html])
 
 dnl Checks for programs.
 AC_PROG_CC
@@ -944,7 +944,8 @@ AC_OUTPUT([
 ])
 
 perl subst include/locations.h
-perl subst html/config.inc.php
+perl subst html/side.html
+perl subst html/main.html
 perl subst html/js/histogram.js
 perl subst html/js/trends.js
 dnl perl subst daemon-service

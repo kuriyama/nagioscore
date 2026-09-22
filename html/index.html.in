@@ -1,0 +1,67 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd">
+
+<html>
+<head>
+	<meta name="ROBOTS" content="NOINDEX, NOFOLLOW">
+	<title>Nagios Core</title>
+	<link rel="shortcut icon" href="images/favicon.ico" type="image/ico">
+
+	<script LANGUAGE="javascript">
+		var n = Math.round(Math.random() * 10000000000);
+		document.cookie = "NagFormId=" + n.toString(16);
+
+		// The server name isn't known until request time, so it can't be
+		// baked in at build time like the other values in this file.
+		document.title = "Nagios: " + window.location.hostname;
+
+		// Allow specifying main window URL for permalinks, etc.
+		// (mirrors the old ?corewindow= handling from index.php)
+		var corewindowEnabled = ("@COREWINDOW@" == "yes");
+		if (corewindowEnabled) {
+			var params = new URLSearchParams(window.location.search);
+			if (params.has('corewindow')) {
+				var a = document.createElement('a');
+				a.href = params.get('corewindow');
+
+				var url = a.pathname + '?';
+				url = a.host ? (a.protocol + '//' + a.host + url) : ('/' + url);
+
+				var query = a.search.replace(/^\?/, '');
+				if (query) {
+					query.split('&').forEach(function(pair) {
+						var v = pair.split('=');
+						var key = encodeURIComponent(v[0]);
+						var val = encodeURIComponent(v.length > 1 ? v[1] : '');
+						url += '&' + key + '=' + val;
+					});
+				}
+
+				if (/^http:\/\/|^https:\/\/|^\//.test(url)) {
+					window.onload = function() {
+						window.frames['main'].location.replace(url);
+					};
+				}
+			}
+		}
+	</script>
+</head>
+
+<frameset cols="180,*" style="border: 0px; framespacing: 0px">
+	<frame src="side.html" name="side" frameborder="0" style="">
+	<frame src="main.html" name="main" frameborder="0" style="">
+
+	<noframes>
+		<!-- This page requires a web browser which supports frames. -->
+		<h2>Nagios Core</h2>
+		<p align="center">
+			<a href="https://www.nagios.org/">www.nagios.org</a><br>
+			Copyright &copy; 2010-2023 Nagios Core Development Team and Community Contributors.
+			Copyright &copy; 1999-2010 Ethan Galstad<br>
+		</p>
+		<p>
+			<i>Note: These pages require a browser which supports frames</i>
+		</p>
+	</noframes>
+</frameset>
+
+</html>

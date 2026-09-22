@@ -43,12 +43,14 @@ then
     newversion=$CURRENTVERSION
 fi
 
-# Update version number and release date in main PHP page
-perl -i -p -e "s/this_year = '.*';/this_year = '$YEAR';/;" html/index.php.in
-perl -i -p -e "s/this_year = '.*';/this_year = '$YEAR';/;" html/main.php
-perl -i -p -e "s/releasedate\">.*<\//releasedate\">$LONGDATE<\//;" html/main.php
-perl -i -p -e "s/this_version = '.*';/this_version = '$newversion';/;" html/main.php
-perl -i -p -e "s/this_version = '.*';/this_version = '$newversion';/;" html/side.php
+# Update version number and release date in the (now static) main page templates
+perl -i -p -e "s/Copyright &copy; 2010-\d+/Copyright &copy; 2010-$YEAR/;" html/index.html.in
+perl -i -p -e "s/Copyright &copy; 2010-\d+/Copyright &copy; 2010-$YEAR/;" html/main.html.in
+perl -i -p -e "s/releasedate\">.*<\//releasedate\">$LONGDATE<\//;" html/main.html.in
+perl -i -p -e "s/class=\"version\">Version [\d.]+/class=\"version\">Version $newversion/;" html/main.html.in
+perl -i -p -e "s/checkforupdates\/\?version=[\d.]+/checkforupdates\/?version=$newversion/;" html/main.html.in
+perl -i -p -e "s/(common|nag_funcs)\.css\?[\d.]+/\$1.css?$newversion/g;" html/main.html.in
+perl -i -p -e "s/common\.css\?[\d.]+/common.css?$newversion/;" html/side.html.in
 
 # Update version number and release date in common code
 perl -i -p -e "s/PROGRAM_VERSION \".*\"/PROGRAM_VERSION \"$newversion\"/;" include/common.h

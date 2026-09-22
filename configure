@@ -646,7 +646,6 @@ BROKERLIBS
 BROKER_LDFLAGS
 cgiurl
 htmurl
-COREWINDOW
 NERD_O
 TMPDIR
 CHECKRESULTDIR
@@ -807,7 +806,6 @@ with_iobroker
 with_gd_lib
 with_gd_inc
 enable_nerd
-enable_corewindow
 enable_statusmap
 with_cgiurl
 with_htmurl
@@ -1453,7 +1451,6 @@ Optional Features:
   --disable-ssl           disables native SSL support [default=check]
   --enable-testing        DEBUGGING ONLY - Enable testing options
   --enable-nerd           enables Nagios Event Radio Dispatch (NERD)
-  --enable-corewindow     enables the 'corewindow' URL argument
   --disable-statusmap     disables compilation of statusmap CGI
   --enable-nanosleep      enables use of nanosleep (instead of sleep) in event
                           timing
@@ -2657,11 +2654,6 @@ shift; shift
 host_os=$*
 IFS=$ac_save_IFS
 case $host_os in *\ *) host_os=`echo "$host_os" | sed 's/ /-/g'`;; esac
-
-
-
-ac_config_files="$ac_config_files html/index.html"
-
 
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
@@ -7061,14 +7053,6 @@ $as_echo "#define ENABLE_NERD 1" >>confdefs.h
 fi
 
 
-COREWINDOW=no
-# Check whether --enable-corewindow was given.
-if test "${enable_corewindow+set}" = set; then :
-  enableval=$enable_corewindow; COREWINDOW=yes
-
-fi
-
-
 
 TRYSTATUSMAP=yes
 # Check whether --enable-statusmap was given.
@@ -8568,7 +8552,6 @@ do
     "include/config.h") CONFIG_HEADERS="$CONFIG_HEADERS include/config.h" ;;
     "lib/snprintf.h") CONFIG_HEADERS="$CONFIG_HEADERS lib/snprintf.h" ;;
     "lib/iobroker.h") CONFIG_HEADERS="$CONFIG_HEADERS lib/iobroker.h" ;;
-    "html/index.html") CONFIG_FILES="$CONFIG_FILES html/index.html" ;;
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "lib/Makefile") CONFIG_FILES="$CONFIG_FILES lib/Makefile" ;;
     "base/Makefile") CONFIG_FILES="$CONFIG_FILES base/Makefile" ;;
@@ -9321,8 +9304,7 @@ fi
 
 
 perl subst include/locations.h
-perl subst html/side.html
-perl subst html/main.html
+perl subst html/index.html
 perl subst html/js/histogram.js
 perl subst html/js/trends.js
 

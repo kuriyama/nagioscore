@@ -39,7 +39,7 @@ clean:
 	rm -rf d3
 
 distclean: clean
-	rm -f Makefile index.html side.html main.html
+	rm -f Makefile index.html
 
 devclean: distclean
 
@@ -70,8 +70,6 @@ install:
 	rm -f $(DESTDIR)$(HTMLDIR)/rss-*
 	rm -rf $(DESTDIR)$(HTMLDIR)/include/rss
 	$(INSTALL) -m 664 $(INSTALL_OPTS) index.html $(DESTDIR)$(HTMLDIR)
-	$(INSTALL) -m 664 $(INSTALL_OPTS) side.html $(DESTDIR)$(HTMLDIR)
-	$(INSTALL) -m 664 $(INSTALL_OPTS) main.html $(DESTDIR)$(HTMLDIR)
 	$(INSTALL) -m 664 $(INSTALL_OPTS) jsonquery.html $(DESTDIR)$(HTMLDIR)
 # New graphical CGI pages
 	$(INSTALL) -m 664 $(INSTALL_OPTS) graph-header.html $(DESTDIR)$(HTMLDIR)

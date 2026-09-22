@@ -45,3 +45,5 @@ html/bootstrap-3.3.7
 html/d3
 html/js/histogram.js
 html/js/trends.js
+
+webui/node_modules/

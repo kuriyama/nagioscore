@@ -21,8 +21,6 @@ AC_SUBST(INSTALL)
 dnl What OS are we running?
 AC_CANONICAL_HOST
 
-AC_CONFIG_FILES([html/index.html])
-
 dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_MAKE_SET
@@ -486,15 +484,6 @@ if test "x$NERD" = "xyes"; then
 fi
 AC_SUBST(NERD_O)
 
-dnl 'corewindow' is now disabled. Allow it to be enabled if someone wants it
-COREWINDOW=no
-AC_ARG_ENABLE(corewindow,
-	AC_HELP_STRING([--enable-corewindow],
-		[enables the 'corewindow' URL argument]),
-	COREWINDOW=yes
-)
-AC_SUBST(COREWINDOW)
-
 dnl statusmap CGI enabled by default, unless users chooses not to use it
 TRYSTATUSMAP=yes
 AC_ARG_ENABLE(statusmap,
@@ -930,8 +919,7 @@ AC_OUTPUT([
 ])
 
 perl subst include/locations.h
-perl subst html/side.html
-perl subst html/main.html
+perl subst html/index.html
 perl subst html/js/histogram.js
 perl subst html/js/trends.js
 dnl perl subst daemon-service

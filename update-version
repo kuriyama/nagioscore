@@ -43,14 +43,16 @@ then
     newversion=$CURRENTVERSION
 fi
 
-# Update version number and release date in the (now static) main page templates
-perl -i -p -e "s/Copyright &copy; 2010-\d+/Copyright &copy; 2010-$YEAR/;" html/index.html.in
-perl -i -p -e "s/Copyright &copy; 2010-\d+/Copyright &copy; 2010-$YEAR/;" html/main.html.in
-perl -i -p -e "s/releasedate\">.*<\//releasedate\">$LONGDATE<\//;" html/main.html.in
-perl -i -p -e "s/class=\"version\">Version [\d.]+/class=\"version\">Version $newversion/;" html/main.html.in
-perl -i -p -e "s/checkforupdates\/\?version=[\d.]+/checkforupdates\/?version=$newversion/;" html/main.html.in
-perl -i -p -e "s/(common|nag_funcs)\.css\?[\d.]+/\$1.css?$newversion/g;" html/main.html.in
-perl -i -p -e "s/common\.css\?[\d.]+/common.css?$newversion/;" html/side.html.in
+# Update version number and release date in the webui/ SPA dashboard, and
+# the css cache-busting query strings in the (still perl-subst'd) shell page.
+# NOTE: run `cd webui && npm run build` afterwards to regenerate
+# html/js/nagios-app.js from these changes -- this script only edits the
+# TypeScript source, not the committed bundle.
+perl -i -p -e "s/Copyright &copy; 2010-\d+/Copyright &copy; 2010-$YEAR/;" webui/src/dashboard.ts
+perl -i -p -e "s/releasedate\">.*<\//releasedate\">$LONGDATE<\//;" webui/src/dashboard.ts
+perl -i -p -e "s/class=\"version\">Version [\d.]+/class=\"version\">Version $newversion/;" webui/src/dashboard.ts
+perl -i -p -e "s/checkforupdates\/\?version=[\d.]+/checkforupdates\/?version=$newversion/;" webui/src/dashboard.ts
+perl -i -p -e "s/(common|nagios-app)\.css\?[\d.]+/\$1.css?$newversion/g;" html/index.html.in
 
 # Update version number and release date in common code
 perl -i -p -e "s/PROGRAM_VERSION \".*\"/PROGRAM_VERSION \"$newversion\"/;" include/common.h

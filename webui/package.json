@@ -1,0 +1,14 @@
+{
+  "name": "nagios-webui",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TypeScript SPA shell (nav + search + dashboard) for Nagios Core, built output is committed to ../html/js/nagios-app.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2",
+    "typescript": "^5.9.3"
+  }
+}

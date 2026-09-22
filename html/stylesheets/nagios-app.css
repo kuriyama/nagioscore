@@ -1,0 +1,27 @@
+/* Styling for the elements introduced by webui/ (the TypeScript nav + search
+   + dashboard SPA) that aren't covered by common.css. */
+
+#searchresults {
+	margin: 10px 0;
+	}
+
+#searchresults h3 {
+	margin: 10px 0 4px 0;
+	font-size: 10pt;
+	}
+
+#searchresults ul {
+	margin: 0;
+	padding-left: 20px;
+	}
+
+.searchResultHost {
+	color: #666;
+	font-size: 9pt;
+	}
+
+#searchstatus {
+	font-size: 9pt;
+	color: #666;
+	min-height: 1em;
+	}

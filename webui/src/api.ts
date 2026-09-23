@@ -100,9 +100,31 @@ export async function fetchServices(): Promise<ServiceEntry[]> {
 	return out;
 }
 
+/**
+ * statusjson.cgi?query=programstatus (json_status_program in
+ * cgi/statusjson.c). Most of json_status_program's fields are emitted
+ * unconditionally; the rest of that function's stats (per-check-type
+ * min/max/avg latency etc., under a separate `#if 0` block in the C source
+ * -- genuinely disabled, not a gap in this port) aren't modeled here.
+ */
 export interface ProgramStatus {
 	nagios_pid: number;
 	daemon_mode: boolean;
+	version?: string;
+	program_start?: number;
+	last_log_rotation?: number;
+	enable_notifications?: boolean;
+	execute_service_checks?: boolean;
+	accept_passive_service_checks?: boolean;
+	execute_host_checks?: boolean;
+	accept_passive_host_checks?: boolean;
+	enable_event_handlers?: boolean;
+	obsess_over_services?: boolean;
+	obsess_over_hosts?: boolean;
+	check_service_freshness?: boolean;
+	check_host_freshness?: boolean;
+	enable_flap_detection?: boolean;
+	process_performance_data?: boolean;
 }
 
 interface ProgramStatusData {
@@ -538,4 +560,49 @@ export function trendsPngUrl(p: StateChangeListParams): string {
 		url.searchParams.set('includesoftstates', 'yes');
 	}
 	return url.toString();
+}
+
+/**
+ * archivejson.cgi?query=notificationlist (json_archive_notificationlist in
+ * cgi/archivejson.c). Unlike statechangelist/availability, this isn't
+ * scoped to one host/service -- notifications.cgi?contact=all shows
+ * everything, so no host/service/contact filter is passed here either.
+ */
+export type NotificationObjectType = 'host' | 'service';
+
+export interface NotificationEntry {
+	timestamp: number;
+	object_type: NotificationObjectType;
+	/** present when object_type === 'host' */
+	name?: string;
+	/** present when object_type === 'service' */
+	host_name?: string;
+	description?: string;
+	contact: string;
+	/** cgi/archiveutils.c's svm_au_notification_types short keys (e.g.
+	    "down", "critical", "recovery" -- the same short key is shared by
+	    the host- and service-recovery enum values, disambiguated by
+	    object_type, not by this string alone). */
+	notification_type: string;
+	method: string;
+	message: string;
+}
+
+interface NotificationListData {
+	notificationlist: NotificationEntry[];
+}
+
+export interface NotificationListParams {
+	startTime: number;
+	endTime: number;
+}
+
+export async function fetchNotifications(p: NotificationListParams): Promise<NotificationEntry[]> {
+	const data = await fetchJson<NotificationListData>('archivejson.cgi', {
+		query: 'notificationlist',
+		formatoptions: 'enumerate',
+		starttime: String(p.startTime),
+		endtime: String(p.endTime),
+	});
+	return data.notificationlist ?? [];
 }

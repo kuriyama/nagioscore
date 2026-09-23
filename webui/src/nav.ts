@@ -72,7 +72,7 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 				{ label: 'Alerts / History', href: `${cgiUrl}/history.cgi?host=all` },
 				{ label: 'Alerts / Summary', href: `${cgiUrl}/summary.cgi` },
 				{ label: 'Histogram', href: 'histogram.html', legacyHref: `${cgiUrl}/histogram.cgi` },
-				{ label: 'Notifications', href: `${cgiUrl}/notifications.cgi?contact=all` },
+				{ label: 'Notifications', href: '#notifications' },
 				{ label: 'Event Log', href: `${cgiUrl}/showlog.cgi` },
 			],
 		},
@@ -81,7 +81,7 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 			links: [
 				{ label: 'Comments', href: '#comments' },
 				{ label: 'Downtime', href: '#downtime' },
-				{ label: 'Process Info', href: `${cgiUrl}/extinfo.cgi?type=0` },
+				{ label: 'Process Info', href: '#processinfo' },
 				{ label: 'Performance Info', href: `${cgiUrl}/extinfo.cgi?type=4` },
 				{ label: 'Scheduling Queue', href: `${cgiUrl}/extinfo.cgi?type=7` },
 				{ label: 'Configuration', href: `${cgiUrl}/config.cgi` },

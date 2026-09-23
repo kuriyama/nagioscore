@@ -79,8 +79,8 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 		{
 			title: 'System',
 			links: [
-				{ label: 'Comments', href: `${cgiUrl}/extinfo.cgi?type=3` },
-				{ label: 'Downtime', href: `${cgiUrl}/extinfo.cgi?type=6` },
+				{ label: 'Comments', href: '#comments' },
+				{ label: 'Downtime', href: '#downtime' },
 				{ label: 'Process Info', href: `${cgiUrl}/extinfo.cgi?type=0` },
 				{ label: 'Performance Info', href: `${cgiUrl}/extinfo.cgi?type=4` },
 				{ label: 'Scheduling Queue', href: `${cgiUrl}/extinfo.cgi?type=7` },

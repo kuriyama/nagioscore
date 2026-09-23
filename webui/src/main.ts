@@ -2,6 +2,8 @@ import { renderNav } from './nav';
 import { renderDashboard } from './dashboard';
 import { renderHosts } from './hosts';
 import { renderServices } from './services';
+import { renderComments } from './comments';
+import { renderDowntime } from './downtime';
 import { installDebugHelper, logRouteSnapshot } from './debug';
 import { renderTrends } from './trends';
 import { type ProblemFilterMode } from './api';
@@ -42,6 +44,10 @@ function renderRoute(dashboardEl: HTMLElement): void {
 		activeViewCleanup = renderServices(dashboardEl, parseFilterParam(params));
 	} else if (route === 'trends') {
 		activeViewCleanup = renderTrends(dashboardEl);
+	} else if (route === 'comments') {
+		activeViewCleanup = renderComments(dashboardEl);
+	} else if (route === 'downtime') {
+		activeViewCleanup = renderDowntime(dashboardEl);
 	} else {
 		renderDashboard(dashboardEl);
 	}

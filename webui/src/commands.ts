@@ -9,10 +9,14 @@ import { cgiUrl, getCurrentUser } from './api';
  * response body (there's no separate HTTP status or JSON envelope here).
  */
 
+const CMD_DEL_HOST_COMMENT = 2;
+const CMD_DEL_SVC_COMMENT = 4;
 const CMD_ACKNOWLEDGE_HOST_PROBLEM = 33;
 const CMD_ACKNOWLEDGE_SVC_PROBLEM = 34;
 const CMD_SCHEDULE_HOST_DOWNTIME = 55;
 const CMD_SCHEDULE_SVC_DOWNTIME = 56;
+const CMD_DEL_HOST_DOWNTIME = 78;
+const CMD_DEL_SVC_DOWNTIME = 79;
 
 export interface CommandResult {
 	ok: boolean;
@@ -163,4 +167,20 @@ export function scheduleServiceDowntime(host: string, service: string, opts: Dow
 		service,
 		...downtimeFields(opts),
 	});
+}
+
+export function deleteHostComment(commentId: number): Promise<CommandResult> {
+	return submitCommand({ cmd_typ: String(CMD_DEL_HOST_COMMENT), cmd_mod: '2', com_id: String(commentId) });
+}
+
+export function deleteServiceComment(commentId: number): Promise<CommandResult> {
+	return submitCommand({ cmd_typ: String(CMD_DEL_SVC_COMMENT), cmd_mod: '2', com_id: String(commentId) });
+}
+
+export function deleteHostDowntime(downtimeId: number): Promise<CommandResult> {
+	return submitCommand({ cmd_typ: String(CMD_DEL_HOST_DOWNTIME), cmd_mod: '2', down_id: String(downtimeId) });
+}
+
+export function deleteServiceDowntime(downtimeId: number): Promise<CommandResult> {
+	return submitCommand({ cmd_typ: String(CMD_DEL_SVC_DOWNTIME), cmd_mod: '2', down_id: String(downtimeId) });
 }

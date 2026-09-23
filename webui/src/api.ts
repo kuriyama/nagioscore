@@ -285,6 +285,80 @@ export async function fetchHostGroups(): Promise<HostGroupDetails[]> {
 	return Object.values(data.hostgrouplist ?? {});
 }
 
+/** statusjson.cgi's comment_type/entry_type enums -- see cgi/jsonutils.c's
+    svm_comment_types/svm_comment_entry_types for the string values
+    (formatoptions=enumerate always passed, matching every other enum in
+    this file). */
+export type CommentType = 'host' | 'service';
+export type CommentEntryType = 'user' | 'downtime' | 'flapping' | 'acknowledgement';
+
+export interface CommentEntry {
+	comment_id: number;
+	comment_type: CommentType;
+	entry_type: CommentEntryType;
+	persistent: boolean;
+	entry_time: number;
+	expires: boolean;
+	expire_time: number;
+	host_name: string;
+	/** present when comment_type === 'service' */
+	service_description?: string;
+	author: string;
+	comment_data: string;
+}
+
+/** statusjson.cgi?query=commentlist&details=true -- data.commentlist is an
+    object keyed by comment_id (as a string), matching hostlist/servicelist's
+    details=true shape. */
+interface CommentListData {
+	commentlist: Record<string, CommentEntry>;
+}
+
+export async function fetchComments(): Promise<CommentEntry[]> {
+	const data = await fetchJson<CommentListData>('statusjson.cgi', {
+		query: 'commentlist',
+		details: 'true',
+		formatoptions: 'enumerate',
+	});
+	return Object.values(data.commentlist ?? {});
+}
+
+/** cgi/jsonutils.c's svm_downtime_types (the "any" value is a query filter
+    option, never actually present on a real downtime object). */
+export type DowntimeType = 'host' | 'service';
+
+export interface DowntimeEntry {
+	downtime_id: number;
+	type: DowntimeType;
+	host_name: string;
+	/** present when type === 'service' */
+	service_description?: string;
+	entry_time: number;
+	start_time: number;
+	flex_downtime_start: number;
+	end_time: number;
+	fixed: boolean;
+	triggered_by: number;
+	duration: number;
+	is_in_effect: boolean;
+	start_notification_sent: boolean;
+	author: string;
+	comment: string;
+}
+
+interface DowntimeListData {
+	downtimelist: Record<string, DowntimeEntry>;
+}
+
+export async function fetchDowntimes(): Promise<DowntimeEntry[]> {
+	const data = await fetchJson<DowntimeListData>('statusjson.cgi', {
+		query: 'downtimelist',
+		details: 'true',
+		formatoptions: 'enumerate',
+	});
+	return Object.values(data.downtimelist ?? {});
+}
+
 /**
  * Shared by hosts.ts/services.ts: mirrors cgi/status.c's
  * hoststatustypes/servicestatustypes/hostprops/serviceprops query-string

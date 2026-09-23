@@ -1,6 +1,42 @@
 /* Styling for the elements introduced by webui/ (the TypeScript nav + search
    + dashboard SPA) that aren't covered by common.css. */
 
+/* #nav/#dashboard used to be two separate documents in a
+   <frameset cols="180,*">, where the browser's own frame layout did the
+   side-by-side positioning -- neither this stylesheet nor common.css
+   (whose .navsection/.navbarlogo/etc. rules only ever styled the CONTENT
+   of the old nav frame document, never its width or position) ever
+   replaced that when the frameset was removed, so both divs were left to
+   fall back to normal block flow (stacked vertically). This restores the
+   original 180px-sidebar layout with the two divs as siblings in one
+   document instead of two frames. */
+body {
+	display: flex;
+	align-items: flex-start;
+	}
+
+#nav {
+	flex: 0 0 180px;
+	width: 180px;
+	box-sizing: border-box;
+	padding: 10px;
+	position: sticky;
+	top: 0;
+	max-height: 100vh;
+	overflow-y: auto;
+	/* #splashpage (common.css) sets text-align: center for the old
+	   splash/main-frame document; now that #nav is a sibling in the same
+	   document instead of a separate navbar-frame document, it inherits
+	   that centering too, unless overridden here. */
+	text-align: left;
+	}
+
+#dashboard {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 10px;
+	}
+
 #searchresults {
 	margin: 10px 0;
 	}

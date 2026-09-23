@@ -165,10 +165,26 @@ export interface HostStatusResult {
 	hosts: Record<string, HostStatusDetails>;
 }
 
+/**
+ * formatoptions=enumerate is required here, not optional: cgi/jsonutils.c's
+ * json_enumeration() (which "status" goes through) returns the raw integer
+ * value, not the "up"/"down"/etc string HostStatusValue assumes, unless
+ * this flag is set -- the server's own format_options default is 0 (see
+ * cgi/statusjson.c's cgi_data->format_options = 0). Confirmed by
+ * reproducing this exact gap against a mock server that mirrors the real
+ * default-vs-enumerate behavior: without this parameter, "status" comes
+ * back numeric, STATUS_LABEL/STATUS_CLASS lookups in hosts.ts silently miss
+ * (blank status column, no color coding), and the "Unhandled Problems"
+ * filter (which compares status.status to string literals) never matches
+ * anything. This was missing here (though correctly present on every fetch
+ * function added later, e.g. fetchComments/fetchStateChangeList) until
+ * this fix.
+ */
 export async function fetchHostStatusDetails(): Promise<HostStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<HostStatusListData>('statusjson.cgi', {
 		query: 'hostlist',
 		details: 'true',
+		formatoptions: 'enumerate',
 	});
 	return { queryTime, hosts: data.hostlist ?? {} };
 }
@@ -226,10 +242,12 @@ export interface ServiceStatusResult {
 	services: ServiceStatusEntry[];
 }
 
+/** See fetchHostStatusDetails's comment -- same bug, same fix, for "status". */
 export async function fetchServiceStatusDetails(): Promise<ServiceStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<ServiceStatusListData>('statusjson.cgi', {
 		query: 'servicelist',
 		details: 'true',
+		formatoptions: 'enumerate',
 	});
 	const services: ServiceStatusEntry[] = [];
 	for (const [hostName, byDescription] of Object.entries(data.servicelist ?? {})) {

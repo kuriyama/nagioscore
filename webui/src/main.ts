@@ -6,6 +6,7 @@ import { renderComments } from './comments';
 import { renderDowntime } from './downtime';
 import { renderProcessInfo } from './processinfo';
 import { renderNotifications } from './notifications';
+import { renderSchedulingQueue } from './schedulingqueue';
 import { installDebugHelper, logRouteSnapshot } from './debug';
 import { renderTrends } from './trends';
 import { type ProblemFilterMode } from './api';
@@ -54,6 +55,8 @@ function renderRoute(dashboardEl: HTMLElement): void {
 		activeViewCleanup = renderProcessInfo(dashboardEl);
 	} else if (route === 'notifications') {
 		activeViewCleanup = renderNotifications(dashboardEl);
+	} else if (route === 'schedulingqueue') {
+		activeViewCleanup = renderSchedulingQueue(dashboardEl);
 	} else {
 		renderDashboard(dashboardEl);
 	}

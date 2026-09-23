@@ -143,6 +143,10 @@ export async function fetchProgramStatus(): Promise<ProgramStatus | null> {
 /** statusjson.cgi's host state enum (not "current_state" -- confirmed via cgi/statusjson.c). */
 export type HostStatusValue = 'up' | 'down' | 'unreachable' | 'pending';
 
+/** cgi/jsonutils.c's svm_host_check_types/svm_service_check_types -- shared
+    by hosts.ts/services.ts and schedulingqueue.ts. */
+export type CheckType = 'active' | 'passive';
+
 export interface HostStatusDetails {
 	status: HostStatusValue;
 	plugin_output: string;
@@ -154,6 +158,11 @@ export interface HostStatusDetails {
 	is_flapping: boolean;
 	scheduled_downtime_depth: number;
 	problem_has_been_acknowledged: boolean;
+	/** Used by schedulingqueue.ts; details=true already includes these on
+	    every hostlist/servicelist response, no extra query param needed. */
+	next_check: number;
+	should_be_scheduled: boolean;
+	check_type: CheckType;
 }
 
 interface HostStatusListData {
@@ -224,6 +233,11 @@ export interface ServiceStatusDetails {
 	problem_has_been_acknowledged: boolean;
 	current_attempt: number;
 	max_attempts: number;
+	/** See HostStatusDetails's matching fields -- same "already in the
+	    response" story. */
+	next_check: number;
+	should_be_scheduled: boolean;
+	check_type: CheckType;
 }
 
 /** { hostName: { serviceDescription: details } } */

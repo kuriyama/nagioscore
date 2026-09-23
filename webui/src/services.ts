@@ -432,12 +432,26 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		let groups;
 		let hostStatusResult;
 		try {
-			[statusResult, objects, groups, hostStatusResult] = await Promise.all([
-				fetchServiceStatusDetails(),
-				fetchServiceObjectDetails(),
-				fetchServiceGroups(),
-				fetchHostStatusDetails(),
-			]);
+			// objectjson.cgi's notes_url/action_url/icon_image and the
+			// servicegroup membership list only change when the Nagios config
+			// is edited and reloaded -- unlike status, they don't need
+			// refetching on every 90s auto-refresh tick. Skipping them here
+			// also sidesteps a real O(hosts * services) cost in objectjson.cgi's
+			// query=servicelist implementation (cgi/objectjson.c's
+			// json_object_servicelist(), same shape as statusjson.cgi's --
+			// see that file's fix) on a large deployment.
+			if (initial) {
+				[statusResult, objects, groups, hostStatusResult] = await Promise.all([
+					fetchServiceStatusDetails(),
+					fetchServiceObjectDetails(),
+					fetchServiceGroups(),
+					fetchHostStatusDetails(),
+				]);
+			} else {
+				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(), fetchHostStatusDetails()]);
+				objects = currentObjects;
+				groups = currentGroups;
+			}
 		} catch (err) {
 			if (!initial) {
 				if (lastUpdatedEl) {

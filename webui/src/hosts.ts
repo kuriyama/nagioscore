@@ -408,11 +408,20 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		let objects;
 		let groups;
 		try {
-			[statusResult, objects, groups] = await Promise.all([
-				fetchHostStatusDetails(),
-				fetchHostObjectDetails(),
-				fetchHostGroups(),
-			]);
+			// objectjson.cgi's notes_url/action_url/icon_image and hostgroup
+			// membership only change on a config reload -- unlike status, no
+			// need to refetch them on every 90s auto-refresh tick.
+			if (initial) {
+				[statusResult, objects, groups] = await Promise.all([
+					fetchHostStatusDetails(),
+					fetchHostObjectDetails(),
+					fetchHostGroups(),
+				]);
+			} else {
+				statusResult = await fetchHostStatusDetails();
+				objects = currentObjects;
+				groups = currentGroups;
+			}
 		} catch (err) {
 			if (!initial) {
 				// Keep showing the last-good table; just surface the error.

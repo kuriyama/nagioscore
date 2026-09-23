@@ -3473,6 +3473,7 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 	json_object *json_service_details;
 	host *temp_host;
 	service *temp_service;
+	servicesmember *temp_sm;
 	int current = 0;
 	int counted = 0;
 	int service_count;
@@ -3504,21 +3505,28 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 			json_servicelist_array = json_new_array();
 			}
 
-		for(temp_service = service_list; temp_service != NULL; 
-				temp_service = temp_service->next) {
-	
+		/* Walk this host's own service list (temp_host->services, built by
+			add_service_link_to_host()) instead of rescanning the entire
+			global service_list and string-comparing host names on every
+			entry -- the latter is O(hosts * services), which dominates on a
+			large config. Order changes from global-registration order to
+			this host's own link order (most-recently-added first); the
+			JSON API doesn't document or guarantee any ordering here, and
+			every consumer of this endpoint we know of already sorts
+			client-side. */
+		for(temp_sm = temp_host->services; temp_sm != NULL;
+				temp_sm = temp_sm->next) {
+
+			temp_service = temp_sm->service_ptr;
+
 			if(json_object_service_passes_service_selection(temp_service,
-					temp_servicegroup, temp_contact, 
+					temp_servicegroup, temp_contact,
 					service_description, parent_service_name,
 					child_service_name, temp_contactgroup,
 					check_timeperiod, notification_timeperiod,
 					check_command, event_handler) == 0) {
 				continue;
 				}
-
-			/* If this service isn't on the host we're currently working with, 
-					skip it */
-			if( strcmp( temp_host->name, temp_service->host_name)) continue;
 
 			/* If the current item passes the start and limit tests, display it */
 			if( passes_start_and_count_limits(start, count, current, counted)) {

@@ -2,12 +2,15 @@ import {
 	fetchServiceStatusDetails,
 	fetchServiceObjectDetails,
 	fetchServiceGroups,
+	fetchHostStatusDetails,
 	extinfoHostUrl,
 	extinfoServiceUrl,
 	type ServiceStatusEntry,
 	type ServiceObjectDetails,
 	type ServiceGroupDetails,
 	type ServiceStatusValue,
+	type HostStatusDetails,
+	type ProblemFilterMode,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
 import { promptAcknowledge, promptDowntime } from './actions';
@@ -47,6 +50,28 @@ const STATUS_SEVERITY: Record<ServiceStatusValue, number> = {
 	pending: 3,
 	ok: 4,
 };
+
+/**
+ * servicestatustypes=28 (WARNING|UNKNOWN|CRITICAL) for "Problems", plus
+ * serviceprops=10 (NO_SCHEDULED_DOWNTIME|STATE_UNACKNOWLEDGED) and
+ * hoststatustypes=3 (UP|PENDING) for "Unhandled" -- the host-status check
+ * excludes problems on a host that's itself down, since those are noise
+ * caused by the host outage rather than independently actionable. See
+ * ProblemFilterMode in api.ts.
+ */
+function matchesProblemFilter(
+	entry: ServiceStatusEntry,
+	mode: ProblemFilterMode,
+	hostStatus: Record<string, HostStatusDetails>,
+): boolean {
+	if (mode === 'all') return true;
+	const s = entry.status;
+	const isProblem = s.status === 'warning' || s.status === 'unknown' || s.status === 'critical';
+	if (mode === 'problems') return isProblem;
+	if (!isProblem || s.problem_has_been_acknowledged || s.scheduled_downtime_depth > 0) return false;
+	const host = hostStatus[entry.hostName];
+	return !host || host.status === 'up' || host.status === 'pending';
+}
 
 type SortKey = 'host' | 'service' | 'status' | 'lastCheck' | 'duration' | 'attempt' | 'info';
 type SortDirection = 'asc' | 'desc';
@@ -228,12 +253,15 @@ function renderTableBody(
 	queryTime: number,
 	sort: SortState,
 	memberFilter: Set<string> | null,
+	problemFilter: ProblemFilterMode,
+	hostStatus: Record<string, HostStatusDetails>,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): void {
 	tbody.innerHTML = '';
 
 	let entries = memberFilter ? services.filter((e) => memberFilter.has(serviceKey(e.hostName, e.description))) : services;
+	entries = entries.filter((e) => matchesProblemFilter(e, problemFilter, hostStatus));
 	entries = [...entries].sort((a, b) => compareServices(a, b, sort));
 
 	let zebraOdd = false;
@@ -302,21 +330,24 @@ function sortIndicator(sort: SortState, key: SortKey): string {
 }
 
 /** Returns a cleanup function the caller should invoke when navigating away (stops auto-refresh). */
-export function renderServices(container: HTMLElement): () => void {
+export function renderServices(container: HTMLElement, initialFilter: ProblemFilterMode = 'all'): () => void {
 	container.innerHTML = '<p>Loading services...</p>';
 
 	const sort: SortState = { key: 'status', direction: 'asc' };
 	let selectedGroup: string | null = null;
+	let problemFilter: ProblemFilterMode = initialFilter;
 	let stopped = false;
 
 	let currentServices: ServiceStatusEntry[] = [];
 	let currentObjects: Map<string, ServiceObjectDetails> = new Map();
 	let currentGroups: ServiceGroupDetails[] = [];
+	let currentHostStatus: Record<string, HostStatusDetails> = {};
 	let currentQueryTime = 0;
 
 	let headerCells: HTMLTableCellElement[] = [];
 	let tbody: HTMLTableSectionElement | null = null;
 	let groupSelect: HTMLSelectElement | null = null;
+	let problemSelect: HTMLSelectElement | null = null;
 	let lastUpdatedEl: HTMLElement | null = null;
 	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
@@ -326,6 +357,15 @@ export function renderServices(container: HTMLElement): () => void {
 		const group = currentGroups.find((g) => g.group_name === selectedGroup);
 		if (!group) return null;
 		return new Set(group.members.map((m) => serviceKey(m.host_name, m.service_description)));
+	}
+
+	function currentlyDisplayedCount(): number {
+		const memberFilter = currentMemberFilter();
+		return currentServices.filter(
+			(e) =>
+				(!memberFilter || memberFilter.has(serviceKey(e.hostName, e.description))) &&
+				matchesProblemFilter(e, problemFilter, currentHostStatus),
+		).length;
 	}
 
 	function setActionStatus(msg: string): void {
@@ -343,16 +383,14 @@ export function renderServices(container: HTMLElement): () => void {
 				currentQueryTime,
 				sort,
 				currentMemberFilter(),
+				problemFilter,
+				currentHostStatus,
 				() => void load(false),
 				setActionStatus,
 			);
 		}
 		if (heading) {
-			const filter = currentMemberFilter();
-			const count = filter
-				? currentServices.filter((e) => filter.has(serviceKey(e.hostName, e.description))).length
-				: currentServices.length;
-			heading.textContent = `Services (${count})`;
+			heading.textContent = `Services (${currentlyDisplayedCount()})`;
 		}
 	}
 
@@ -388,11 +426,13 @@ export function renderServices(container: HTMLElement): () => void {
 		let statusResult;
 		let objects;
 		let groups;
+		let hostStatusResult;
 		try {
-			[statusResult, objects, groups] = await Promise.all([
+			[statusResult, objects, groups, hostStatusResult] = await Promise.all([
 				fetchServiceStatusDetails(),
 				fetchServiceObjectDetails(),
 				fetchServiceGroups(),
+				fetchHostStatusDetails(),
 			]);
 		} catch (err) {
 			if (!initial) {
@@ -412,6 +452,7 @@ export function renderServices(container: HTMLElement): () => void {
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
 		currentGroups = groups;
+		currentHostStatus = hostStatusResult.hosts;
 
 		if (initial) {
 			container.innerHTML = '';
@@ -430,6 +471,30 @@ export function renderServices(container: HTMLElement): () => void {
 			});
 			label.appendChild(groupSelect);
 			filterBar.appendChild(label);
+
+			filterBar.appendChild(document.createTextNode(' '));
+			const problemLabel = document.createElement('label');
+			problemLabel.textContent = 'Show: ';
+			problemSelect = document.createElement('select');
+			const problemOptions: [ProblemFilterMode, string][] = [
+				['all', 'All Services'],
+				['problems', 'Problems'],
+				['unhandled', 'Unhandled Problems'],
+			];
+			for (const [value, text] of problemOptions) {
+				const option = document.createElement('option');
+				option.value = value;
+				option.textContent = text;
+				problemSelect.appendChild(option);
+			}
+			problemSelect.value = problemFilter;
+			problemSelect.addEventListener('change', () => {
+				problemFilter = problemSelect!.value as ProblemFilterMode;
+				rerenderTable();
+			});
+			problemLabel.appendChild(problemSelect);
+			filterBar.appendChild(problemLabel);
+
 			container.appendChild(filterBar);
 
 			lastUpdatedEl = document.createElement('div');

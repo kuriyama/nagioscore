@@ -285,6 +285,16 @@ export async function fetchHostGroups(): Promise<HostGroupDetails[]> {
 	return Object.values(data.hostgrouplist ?? {});
 }
 
+/**
+ * Shared by hosts.ts/services.ts: mirrors cgi/status.c's
+ * hoststatustypes/servicestatustypes/hostprops/serviceprops query-string
+ * filters used by side.html.in's "Hosts"/"Services" nav links and their
+ * "(Unhandled)" counterparts, applied client-side against already-fetched
+ * data instead of new query params -- see each file's matchesProblemFilter
+ * for the exact bitmask-equivalent logic.
+ */
+export type ProblemFilterMode = 'all' | 'problems' | 'unhandled';
+
 export function statusCgiHostUrl(hostName: string): string {
 	const url = new URL(cgiUrl('status.cgi'), window.location.href);
 	url.searchParams.set('host', hostName);

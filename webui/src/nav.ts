@@ -57,22 +57,10 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 			],
 			extraTitle: 'Problems',
 			extraLinks: [
-				{
-					label: 'Services',
-					href: `${cgiUrl}/status.cgi?host=all&servicestatustypes=28`,
-				},
-				{
-					label: 'Services (Unhandled)',
-					href: `${cgiUrl}/status.cgi?host=all&type=detail&hoststatustypes=3&serviceprops=10&servicestatustypes=28`,
-				},
-				{
-					label: 'Hosts',
-					href: `${cgiUrl}/status.cgi?hostgroup=all&style=hostdetail&hoststatustypes=12`,
-				},
-				{
-					label: 'Hosts (Unhandled)',
-					href: `${cgiUrl}/status.cgi?hostgroup=all&style=hostdetail&hoststatustypes=12&hostprops=42`,
-				},
+				{ label: 'Services', href: '#services?filter=problems' },
+				{ label: 'Services (Unhandled)', href: '#services?filter=unhandled' },
+				{ label: 'Hosts', href: '#hosts?filter=problems' },
+				{ label: 'Hosts (Unhandled)', href: '#hosts?filter=unhandled' },
 				{ label: 'Network Outages', href: `${cgiUrl}/outages.cgi` },
 			],
 		},

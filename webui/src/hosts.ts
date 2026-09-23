@@ -8,6 +8,7 @@ import {
 	type HostObjectDetails,
 	type HostGroupDetails,
 	type HostStatusValue,
+	type ProblemFilterMode,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
 import { promptAcknowledge, promptDowntime } from './actions';
@@ -47,6 +48,23 @@ const STATUS_SEVERITY: Record<HostStatusValue, number> = {
 	pending: 2,
 	up: 3,
 };
+
+/**
+ * hoststatustypes=12 (DOWN|UNREACHABLE) for "Problems", plus hostprops=42
+ * (NO_SCHEDULED_DOWNTIME|STATE_UNACKNOWLEDGED|CHECKS_ENABLED) for
+ * "Unhandled" -- see ProblemFilterMode in api.ts.
+ */
+function matchesProblemFilter(status: HostStatusDetails, mode: ProblemFilterMode): boolean {
+	if (mode === 'all') return true;
+	const isProblem = status.status === 'down' || status.status === 'unreachable';
+	if (mode === 'problems') return isProblem;
+	return (
+		isProblem &&
+		!status.problem_has_been_acknowledged &&
+		status.scheduled_downtime_depth === 0 &&
+		status.checks_enabled
+	);
+}
 
 type SortKey = 'host' | 'status' | 'lastCheck' | 'duration' | 'info';
 type SortDirection = 'asc' | 'desc';
@@ -221,6 +239,7 @@ function renderTableBody(
 	queryTime: number,
 	sort: SortState,
 	memberFilter: Set<string> | null,
+	problemFilter: ProblemFilterMode,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): void {
@@ -230,6 +249,7 @@ function renderTableBody(
 	if (memberFilter) {
 		entries = entries.filter(([hostName]) => memberFilter.has(hostName));
 	}
+	entries = entries.filter(([, status]) => matchesProblemFilter(status, problemFilter));
 	entries = entries.sort((a, b) => compareHosts(a, b, sort));
 
 	let zebraOdd = false;
@@ -284,11 +304,12 @@ function sortIndicator(sort: SortState, key: SortKey): string {
 }
 
 /** Returns a cleanup function the caller should invoke when navigating away (stops auto-refresh). */
-export function renderHosts(container: HTMLElement): () => void {
+export function renderHosts(container: HTMLElement, initialFilter: ProblemFilterMode = 'all'): () => void {
 	container.innerHTML = '<p>Loading hosts...</p>';
 
 	const sort: SortState = { key: 'status', direction: 'asc' };
 	let selectedGroup: string | null = null;
+	let problemFilter: ProblemFilterMode = initialFilter;
 	let stopped = false;
 
 	// Current data, updated in place on every successful load() so that
@@ -303,6 +324,7 @@ export function renderHosts(container: HTMLElement): () => void {
 	let headerCells: HTMLTableCellElement[] = [];
 	let tbody: HTMLTableSectionElement | null = null;
 	let groupSelect: HTMLSelectElement | null = null;
+	let problemSelect: HTMLSelectElement | null = null;
 	let lastUpdatedEl: HTMLElement | null = null;
 	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
@@ -311,6 +333,13 @@ export function renderHosts(container: HTMLElement): () => void {
 		if (!selectedGroup) return null;
 		const group = currentGroups.find((g) => g.group_name === selectedGroup);
 		return group ? new Set(group.members) : null;
+	}
+
+	function currentlyDisplayedCount(): number {
+		const memberFilter = currentMemberFilter();
+		return Object.entries(currentHosts).filter(
+			([hostName, status]) => (!memberFilter || memberFilter.has(hostName)) && matchesProblemFilter(status, problemFilter),
+		).length;
 	}
 
 	function setActionStatus(msg: string): void {
@@ -328,14 +357,13 @@ export function renderHosts(container: HTMLElement): () => void {
 				currentQueryTime,
 				sort,
 				currentMemberFilter(),
+				problemFilter,
 				() => void load(false),
 				setActionStatus,
 			);
 		}
 		if (heading) {
-			const filter = currentMemberFilter();
-			const count = filter ? Object.keys(currentHosts).filter((h) => filter.has(h)).length : Object.keys(currentHosts).length;
-			heading.textContent = `Hosts (${count})`;
+			heading.textContent = `Hosts (${currentlyDisplayedCount()})`;
 		}
 	}
 
@@ -415,6 +443,30 @@ export function renderHosts(container: HTMLElement): () => void {
 			});
 			label.appendChild(groupSelect);
 			filterBar.appendChild(label);
+
+			filterBar.appendChild(document.createTextNode(' '));
+			const problemLabel = document.createElement('label');
+			problemLabel.textContent = 'Show: ';
+			problemSelect = document.createElement('select');
+			const problemOptions: [ProblemFilterMode, string][] = [
+				['all', 'All Hosts'],
+				['problems', 'Problems'],
+				['unhandled', 'Unhandled Problems'],
+			];
+			for (const [value, text] of problemOptions) {
+				const option = document.createElement('option');
+				option.value = value;
+				option.textContent = text;
+				problemSelect.appendChild(option);
+			}
+			problemSelect.value = problemFilter;
+			problemSelect.addEventListener('change', () => {
+				problemFilter = problemSelect!.value as ProblemFilterMode;
+				rerenderTable();
+			});
+			problemLabel.appendChild(problemSelect);
+			filterBar.appendChild(problemLabel);
+
 			container.appendChild(filterBar);
 
 			lastUpdatedEl = document.createElement('div');

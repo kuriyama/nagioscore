@@ -4,8 +4,29 @@ import { renderHosts } from './hosts';
 import { renderServices } from './services';
 import { installDebugHelper, logRouteSnapshot } from './debug';
 import { renderTrends } from './trends';
+import { type ProblemFilterMode } from './api';
 
 let activeViewCleanup: (() => void) | null = null;
+
+/**
+ * Routes are "#name" optionally followed by "?query" (e.g.
+ * "#services?filter=unhandled") -- used by nav.ts's "Hosts (Unhandled)"/
+ * "Services (Unhandled)" links to pick an initial filter without a whole
+ * separate route per filter combination.
+ */
+function parseHash(): { route: string; params: URLSearchParams } {
+	const hash = window.location.hash.replace(/^#/, '');
+	const qIndex = hash.indexOf('?');
+	if (qIndex === -1) {
+		return { route: hash, params: new URLSearchParams() };
+	}
+	return { route: hash.slice(0, qIndex), params: new URLSearchParams(hash.slice(qIndex + 1)) };
+}
+
+function parseFilterParam(params: URLSearchParams): ProblemFilterMode {
+	const value = params.get('filter');
+	return value === 'problems' || value === 'unhandled' ? value : 'all';
+}
 
 function renderRoute(dashboardEl: HTMLElement): void {
 	if (activeViewCleanup) {
@@ -14,11 +35,12 @@ function renderRoute(dashboardEl: HTMLElement): void {
 	}
 
 	const start = performance.now();
-	if (window.location.hash === '#hosts') {
-		activeViewCleanup = renderHosts(dashboardEl);
-	} else if (window.location.hash === '#services') {
-		activeViewCleanup = renderServices(dashboardEl);
-	} else if (window.location.hash === '#trends') {
+	const { route, params } = parseHash();
+	if (route === 'hosts') {
+		activeViewCleanup = renderHosts(dashboardEl, parseFilterParam(params));
+	} else if (route === 'services') {
+		activeViewCleanup = renderServices(dashboardEl, parseFilterParam(params));
+	} else if (route === 'trends') {
 		activeViewCleanup = renderTrends(dashboardEl);
 	} else {
 		renderDashboard(dashboardEl);

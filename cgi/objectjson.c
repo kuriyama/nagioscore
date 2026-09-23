@@ -3456,7 +3456,41 @@ json_object *json_object_servicecount(host *match_host, int use_parent_host,
 	return json_data;
 	}
 
-json_object *json_object_servicelist(unsigned format_options, int start, 
+/* add_service_link_to_host() (common/objects.c) prepends onto
+	host->services, so a plain walk of it visits a host's own services in
+	most-recently-registered-first order -- the opposite of the global
+	service_list's registration order that callers of this endpoint have
+	always seen. Returns a malloc'd array holding them back in that
+	original order (caller frees it) and sets *out_count; on malloc
+	failure or an empty list, returns NULL and sets *out_count to 0
+	(callers just see zero services for that host, rather than a
+	crash). */
+static service **host_services_in_registration_order(host *hst, int *out_count) {
+	servicesmember *temp_sm;
+	service **ordered;
+	int count = 0;
+	int i;
+
+	for(temp_sm = hst->services; temp_sm != NULL; temp_sm = temp_sm->next)
+		count++;
+
+	*out_count = 0;
+	if(count == 0)
+		return NULL;
+
+	if((ordered = (service **)malloc(count * sizeof(service *))) == NULL)
+		return NULL;
+
+	i = count - 1;
+	for(temp_sm = hst->services; temp_sm != NULL; temp_sm = temp_sm->next) {
+		ordered[i--] = temp_sm->service_ptr;
+		}
+
+	*out_count = count;
+	return ordered;
+	}
+
+json_object *json_object_servicelist(unsigned format_options, int start,
 		int count, int details, host *match_host, int use_parent_host, 
 		host *parent_host, int use_child_host, host *child_host, 
 		hostgroup *temp_hostgroup, servicegroup *temp_servicegroup, 
@@ -3473,7 +3507,9 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 	json_object *json_service_details;
 	host *temp_host;
 	service *temp_service;
-	servicesmember *temp_sm;
+	service **temp_host_services;
+	int temp_host_service_count;
+	int svc_idx;
 	int current = 0;
 	int counted = 0;
 	int service_count;
@@ -3509,15 +3545,17 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 			add_service_link_to_host()) instead of rescanning the entire
 			global service_list and string-comparing host names on every
 			entry -- the latter is O(hosts * services), which dominates on a
-			large config. Order changes from global-registration order to
-			this host's own link order (most-recently-added first); the
-			JSON API doesn't document or guarantee any ordering here, and
-			every consumer of this endpoint we know of already sorts
-			client-side. */
-		for(temp_sm = temp_host->services; temp_sm != NULL;
-				temp_sm = temp_sm->next) {
+			large config. host_services_in_registration_order() restores the
+			original global-registration order (see its comment), since
+			html/js/trends-form.js and histogram-form.js's "Service" dropdown
+			both call this endpoint with no sort of their own and display
+			the returned order as-is. */
+		temp_host_services = host_services_in_registration_order(temp_host,
+				&temp_host_service_count);
 
-			temp_service = temp_sm->service_ptr;
+		for(svc_idx = 0; svc_idx < temp_host_service_count; svc_idx++) {
+
+			temp_service = temp_host_services[svc_idx];
 
 			if(json_object_service_passes_service_selection(temp_service,
 					temp_servicegroup, temp_contact,
@@ -3546,16 +3584,18 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 				counted++;
 				service_count++;
 				}
-			current++; 
+			current++;
 			}
+
+		free(temp_host_services);
 
 		if(service_count > 0) {
 			if(details > 0) {
-				json_object_append_object(json_hostlist, temp_host->name, 
+				json_object_append_object(json_hostlist, temp_host->name,
 						json_servicelist_object);
 				}
 			else {
-				json_object_append_array(json_hostlist, temp_host->name, 
+				json_object_append_array(json_hostlist, temp_host->name,
 						json_servicelist_array);
 				}
 			}

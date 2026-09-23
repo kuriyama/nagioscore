@@ -3339,7 +3339,38 @@ json_object *json_status_servicecount(unsigned format_options, host *match_host,
 	return json_data;
 	}
 
-json_object *json_status_servicelist(unsigned format_options, int start, 
+/* See objectjson.c's identical helper (used by json_object_servicelist())
+	for the full rationale: add_service_link_to_host() prepends onto
+	host->services, so this restores the original global-registration
+	order a plain walk of it would otherwise reverse. Returns a malloc'd
+	array (caller frees it) and sets *out_count; NULL/0 on an empty list
+	or malloc failure. */
+static service **host_services_in_registration_order(host *hst, int *out_count) {
+	servicesmember *temp_sm;
+	service **ordered;
+	int count = 0;
+	int i;
+
+	for(temp_sm = hst->services; temp_sm != NULL; temp_sm = temp_sm->next)
+		count++;
+
+	*out_count = 0;
+	if(count == 0)
+		return NULL;
+
+	if((ordered = (service **)malloc(count * sizeof(service *))) == NULL)
+		return NULL;
+
+	i = count - 1;
+	for(temp_sm = hst->services; temp_sm != NULL; temp_sm = temp_sm->next) {
+		ordered[i--] = temp_sm->service_ptr;
+		}
+
+	*out_count = count;
+	return ordered;
+	}
+
+json_object *json_status_servicelist(unsigned format_options, int start,
 		int count, int details, host *match_host, int use_parent_host, 
 		host *parent_host, int use_child_host, host *child_host, 
 		hostgroup *temp_hostgroup, servicegroup *temp_servicegroup, 
@@ -3356,7 +3387,9 @@ json_object *json_status_servicelist(unsigned format_options, int start,
 	json_object *json_service_details;
 	host *temp_host;
 	service *temp_service;
-	servicesmember *temp_sm;
+	service **temp_host_services;
+	int temp_host_service_count;
+	int svc_idx;
 	servicestatus *temp_servicestatus;
 	int current = 0;
 	int counted = 0;
@@ -3391,14 +3424,14 @@ json_object *json_status_servicelist(unsigned format_options, int start,
 			global service_list and string-comparing host names on every
 			entry -- the latter is O(hosts * services), which dominates on a
 			large config (this loop nest is the only one in the request).
-			Order changes from global-registration order to this host's own
-			link order (most-recently-added first); the JSON API doesn't
-			document or guarantee any ordering here, and every consumer of
-			this endpoint we know of already sorts client-side. */
-		for(temp_sm = temp_host->services; temp_sm != NULL;
-				temp_sm = temp_sm->next) {
+			host_services_in_registration_order() restores the original
+			global-registration order (see its comment). */
+		temp_host_services = host_services_in_registration_order(temp_host,
+				&temp_host_service_count);
 
-			temp_service = temp_sm->service_ptr;
+		for(svc_idx = 0; svc_idx < temp_host_service_count; svc_idx++) {
+
+			temp_service = temp_host_services[svc_idx];
 
 			/* Get the service status. If we cannot get the status of
 				the service, skip it. This should probably return an 
@@ -3446,11 +3479,13 @@ json_object *json_status_servicelist(unsigned format_options, int start,
 					}
 				counted++;
 				}
-			current++; 
+			current++;
 			}
 
+		free(temp_host_services);
+
 		if( service_count > 0) {
-			json_object_append_object(json_hostlist, temp_host->name, 
+			json_object_append_object(json_hostlist, temp_host->name,
 					json_servicelist);
 			}
 		}

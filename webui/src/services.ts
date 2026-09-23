@@ -150,6 +150,10 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	img.src = `images/${src}`;
 	img.alt = alt;
 	img.title = alt;
+	// See hosts.ts's matching icon() -- include/cgiutils.h's
+	// STATUS_ICON_WIDTH/HEIGHT (20), forced regardless of native image size.
+	img.width = 20;
+	img.height = 20;
 	img.style.marginRight = '2px';
 	if (href) {
 		const a = document.createElement('a');

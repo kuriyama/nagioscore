@@ -130,6 +130,13 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	img.src = `images/${src}`;
 	img.alt = alt;
 	img.title = alt;
+	// include/cgiutils.h's STATUS_ICON_WIDTH/HEIGHT (20) -- the original CGI
+	// forces every status/logo icon to this size via WIDTH/HEIGHT attributes
+	// regardless of the source image's native resolution (logo PNGs are
+	// commonly shipped at 40x40). Without this, the browser renders each
+	// icon at its native size instead.
+	img.width = 20;
+	img.height = 20;
 	img.style.marginRight = '2px';
 	if (href) {
 		const a = document.createElement('a');

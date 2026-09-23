@@ -57,6 +57,18 @@ int debug_level = 0;
 int debug_verbosity = 0;
 
 #include "stub_logging.c"
+#include "stub_xodtemplate.c"
+
+/* cgiauth.o's get_authentication_information() reads cgi.cfg via this;
+   nothing here calls that path, so /dev/null (an always-openable,
+   always-empty file) is a safe stand-in. Not reusing
+   stub_cgiauth_deps.c's copy of this function: that file also stubs
+   is_contact_for_host()/is_escalated_contact_for_host()/etc. to FALSE,
+   which is exactly the real logic this test exists to exercise via the
+   genuine common/objects.c implementation (linked in via objects-cgi.o)
+   -- including it here would both duplicate-define those symbols and
+   silently defeat the point of this file. */
+const char *get_cgi_config_location(void) { return "/dev/null"; }
 
 /* ---- minimal fixture-building helpers ----
    Each wraps the real add_*() API with sensible defaults for the many

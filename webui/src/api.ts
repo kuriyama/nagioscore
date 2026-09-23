@@ -36,6 +36,63 @@ interface FetchResult<T> {
 	queryTime: number;
 }
 
+/**
+ * cgi/jsonutils.c's json_time_t() (used for every time_t-typed field --
+ * query_time, last_check, next_check, last_state_change, entry_time,
+ * start_time, end_time, timestamp, ...) renders the value as the raw
+ * epoch-seconds integer with a literal "000" string suffix appended,
+ * i.e. milliseconds, UNLESS the request passes dateformat=<strftime
+ * format>:
+ *   snprintf(buf, ..., "%llu%s", (unsigned long long)value,
+ *            ((unsigned long long)value > 0 ? "000" : ""));
+ * None of this file's fetch functions pass dateformat, so every such
+ * field comes back in milliseconds while the rest of this codebase
+ * (format.ts's formatTimestamp/formatDuration, sort comparators, ...)
+ * assumes epoch seconds throughout. Rather than requiring every call
+ * site to know which fields need /1000, this JSON.parse reviver fixes
+ * every time_t-named field back to seconds at the one place the JSON
+ * is parsed. Confirmed against a real install (values like "Last
+ * check" and the "Last updated" header rendering as year 58xxx dates --
+ * exactly what double-scaling an already-correct epoch value by 1000
+ * again would produce).
+ */
+const TIME_T_FIELD_NAMES = new Set([
+	'query_time',
+	'program_start',
+	'last_data_update',
+	'last_update',
+	'last_check',
+	'next_check',
+	'last_state_change',
+	'last_hard_state_change',
+	'last_time_up',
+	'last_time_down',
+	'last_time_unreachable',
+	'last_time_ok',
+	'last_time_warning',
+	'last_time_unknown',
+	'last_time_critical',
+	'last_notification',
+	'next_notification',
+	'entry_time',
+	'expire_time',
+	'start_time',
+	'flex_downtime_start',
+	'end_time',
+	'last_command_check',
+	'last_log_rotation',
+	'timestamp',
+	'starttime',
+	'endtime',
+]);
+
+function reviveTimeT(key: string, value: unknown): unknown {
+	if (typeof value === 'number' && TIME_T_FIELD_NAMES.has(key)) {
+		return Math.floor(value / 1000);
+	}
+	return value;
+}
+
 // Every successful JSON response carries the authenticated username in
 // result.user; cache the most recent one instead of making a dedicated
 // request just to find out who's logged in (used by commands.ts to
@@ -55,7 +112,7 @@ async function fetchJsonWithResult<T>(cgiName: string, params: Record<string, st
 	if (!res.ok) {
 		throw new Error(`${cgiName} request failed: HTTP ${res.status}`);
 	}
-	const body = (await res.json()) as NagiosResponse<T>;
+	const body = JSON.parse(await res.text(), reviveTimeT) as NagiosResponse<T>;
 	if (body.result.user) {
 		lastKnownUser = body.result.user;
 	}

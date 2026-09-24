@@ -15,6 +15,7 @@ import {
 import { formatDuration, formatTimestamp } from './format';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeService, scheduleServiceDowntime } from './commands';
+import { renderStatusTotals } from './statustotals';
 
 /**
  * Port of cgi/status.c's show_service_detail() (the "Services" nav link,
@@ -366,12 +367,51 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	let lastUpdatedEl: HTMLElement | null = null;
 	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
+	let totalsContainer: HTMLElement | null = null;
 
 	function currentMemberFilter(): Set<string> | null {
 		if (!selectedGroup) return null;
 		const group = currentGroups.find((g) => g.group_name === selectedGroup);
 		if (!group) return null;
 		return new Set(group.members.map((m) => serviceKey(m.host_name, m.service_description)));
+	}
+
+	// Scoped by Service Group only, matching cgi/status.c's
+	// show_service_status_totals() -- unlike the table below, this box is
+	// NOT affected by the Problems/Unhandled Problems filter.
+	function renderTotalsPanel(): void {
+		if (!totalsContainer) return;
+		const memberFilter = currentMemberFilter();
+		let ok = 0;
+		let warning = 0;
+		let unknown = 0;
+		let critical = 0;
+		let pending = 0;
+		for (const entry of currentServices) {
+			if (memberFilter && !memberFilter.has(serviceKey(entry.hostName, entry.description))) continue;
+			const status = entry.status.status;
+			if (status === 'ok') ok++;
+			else if (status === 'warning') warning++;
+			else if (status === 'unknown') unknown++;
+			else if (status === 'critical') critical++;
+			else pending++;
+		}
+		totalsContainer.innerHTML = '';
+		totalsContainer.appendChild(
+			renderStatusTotals(
+				'service',
+				'Service Status Totals',
+				[
+					{ label: 'Ok', count: ok, classSuffix: 'OK' },
+					{ label: 'Warning', count: warning, classSuffix: 'WARNING' },
+					{ label: 'Unknown', count: unknown, classSuffix: 'UNKNOWN' },
+					{ label: 'Critical', count: critical, classSuffix: 'CRITICAL' },
+					{ label: 'Pending', count: pending, classSuffix: 'PENDING' },
+				],
+				warning + unknown + critical,
+				ok + warning + unknown + critical + pending,
+			),
+		);
 	}
 
 	function currentlyDisplayedCount(): number {
@@ -390,6 +430,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	}
 
 	function rerenderTable(): void {
+		renderTotalsPanel();
 		if (tbody) {
 			renderTableBody(
 				tbody,
@@ -488,6 +529,9 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
+
+			totalsContainer = document.createElement('div');
+			container.appendChild(totalsContainer);
 
 			const filterBar = document.createElement('div');
 			filterBar.id = 'detailFilterBar';

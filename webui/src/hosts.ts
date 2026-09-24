@@ -13,6 +13,7 @@ import {
 import { formatDuration, formatTimestamp } from './format';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeHost, scheduleHostDowntime } from './commands';
+import { renderStatusTotals } from './statustotals';
 
 /**
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
@@ -350,11 +351,46 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 	let lastUpdatedEl: HTMLElement | null = null;
 	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
+	let totalsContainer: HTMLElement | null = null;
 
 	function currentMemberFilter(): Set<string> | null {
 		if (!selectedGroup) return null;
 		const group = currentGroups.find((g) => g.group_name === selectedGroup);
 		return group ? new Set(group.members) : null;
+	}
+
+	// Scoped by Host Group only, matching cgi/status.c's show_host_status_totals()
+	// -- unlike the table below, this box is NOT affected by the
+	// Problems/Unhandled Problems filter.
+	function renderTotalsPanel(): void {
+		if (!totalsContainer) return;
+		const memberFilter = currentMemberFilter();
+		let up = 0;
+		let down = 0;
+		let unreachable = 0;
+		let pending = 0;
+		for (const [hostName, status] of Object.entries(currentHosts)) {
+			if (memberFilter && !memberFilter.has(hostName)) continue;
+			if (status.status === 'up') up++;
+			else if (status.status === 'down') down++;
+			else if (status.status === 'unreachable') unreachable++;
+			else pending++;
+		}
+		totalsContainer.innerHTML = '';
+		totalsContainer.appendChild(
+			renderStatusTotals(
+				'host',
+				'Host Status Totals',
+				[
+					{ label: 'Up', count: up, classSuffix: 'UP' },
+					{ label: 'Down', count: down, classSuffix: 'DOWN' },
+					{ label: 'Unreachable', count: unreachable, classSuffix: 'UNREACHABLE' },
+					{ label: 'Pending', count: pending, classSuffix: 'PENDING' },
+				],
+				down + unreachable,
+				up + down + unreachable + pending,
+			),
+		);
 	}
 
 	function currentlyDisplayedCount(): number {
@@ -371,6 +407,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 	}
 
 	function rerenderTable(): void {
+		renderTotalsPanel();
 		if (tbody) {
 			renderTableBody(
 				tbody,
@@ -462,6 +499,9 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
+
+			totalsContainer = document.createElement('div');
+			container.appendChild(totalsContainer);
 
 			const filterBar = document.createElement('div');
 			filterBar.id = 'detailFilterBar';

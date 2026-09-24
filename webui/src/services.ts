@@ -184,13 +184,24 @@ function renderServiceCell(
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
 	const td = document.createElement('td');
+	// See hosts.ts's renderHostCell -- same statusHOST*-vs-statusBG*
+	// distinction, ported from cgi/status.c's show_service_detail().
+	td.className = STATUS_CLASS[entry.status.status];
 
-	const nameLine = document.createElement('div');
+	// Name and icons share one line, name left / icons right (see
+	// hosts.ts's renderHostCell for the rationale).
+	const nameIconRow = document.createElement('div');
+	nameIconRow.style.display = 'flex';
+	nameIconRow.style.flexWrap = 'wrap';
+	nameIconRow.style.alignItems = 'center';
+	nameIconRow.style.justifyContent = 'space-between';
+	nameIconRow.style.gap = '4px';
+	td.appendChild(nameIconRow);
+
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoServiceUrl(entry.hostName, entry.description);
 	nameLink.textContent = entry.description;
-	nameLine.appendChild(nameLink);
-	td.appendChild(nameLine);
+	nameIconRow.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
 	const s = entry.status;
@@ -220,7 +231,7 @@ function renderServiceCell(
 	if (obj?.icon_image) {
 		icon(iconLine, `logos/${obj.icon_image}`, entry.description);
 	}
-	td.appendChild(iconLine);
+	nameIconRow.appendChild(iconLine);
 
 	const actionsLine = document.createElement('div');
 	const isProblem = s.status === 'warning' || s.status === 'critical' || s.status === 'unknown';

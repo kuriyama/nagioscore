@@ -168,16 +168,31 @@ function renderHostCell(
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
 	const td = document.createElement('td');
+	// cgi/status.c's show_host_detail() colors this cell with the plain
+	// (ack/downtime-insensitive) statusHOST* class, distinct from the
+	// paler ack/downtime-sensitive statusBG* class used on the other
+	// cells (see renderTableBody's bgClass()).
+	td.className = STATUS_CLASS[status.status];
 
-	const nameLine = document.createElement('div');
+	// Name and icons share one line, name left / icons right, matching
+	// show_host_detail()'s nested table (a <td align=left> and a
+	// <td align=right> side by side in the same cell) instead of each
+	// stacking as its own line.
+	const nameIconRow = document.createElement('div');
+	nameIconRow.style.display = 'flex';
+	nameIconRow.style.flexWrap = 'wrap';
+	nameIconRow.style.alignItems = 'center';
+	nameIconRow.style.justifyContent = 'space-between';
+	nameIconRow.style.gap = '4px';
+	td.appendChild(nameIconRow);
+
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoHostUrl(hostName);
 	nameLink.textContent = hostName;
 	if (obj?.address) {
 		nameLink.title = obj.address;
 	}
-	nameLine.appendChild(nameLink);
-	td.appendChild(nameLine);
+	nameIconRow.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
 	if (status.problem_has_been_acknowledged) {
@@ -209,7 +224,7 @@ function renderHostCell(
 		icon(iconLine, `logos/${obj.icon_image}`, hostName);
 	}
 	icon(iconLine, 'status2.gif', 'View the status of all services for this host', statusCgiHostUrl(hostName));
-	td.appendChild(iconLine);
+	nameIconRow.appendChild(iconLine);
 
 	const actionsLine = document.createElement('div');
 	const isProblem = status.status === 'down' || status.status === 'unreachable';

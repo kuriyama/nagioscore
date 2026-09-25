@@ -186,7 +186,9 @@ function renderHostCell(
 	row.style.display = 'flex';
 	row.style.alignItems = 'center';
 	row.style.gap = '6px';
-	row.style.whiteSpace = 'nowrap';
+	// Not white-space: nowrap -- see services.ts's renderServiceCell for
+	// why (unbounded-width risk from long text), applied here too for
+	// consistency even though host names are usually shorter.
 	td.appendChild(row);
 
 	const nameLink = document.createElement('a');

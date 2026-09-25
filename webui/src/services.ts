@@ -195,7 +195,13 @@ function renderServiceCell(
 	row.style.display = 'flex';
 	row.style.alignItems = 'center';
 	row.style.gap = '6px';
-	row.style.whiteSpace = 'nowrap';
+	// Not white-space: nowrap -- unlike hostnames, service descriptions
+	// can be arbitrarily long (real ones seen: 70+ characters), and
+	// forcing the whole row onto one unbroken line would let this
+	// column grow unbounded, squeezing every other column in the same
+	// table (e.g. wrapping the Host column's normally-short names).
+	// Left to wrap normally, this cell only grows past one line for
+	// those outliers, same as it would in a plain (non-flex) table cell.
 	td.appendChild(row);
 
 	const nameLink = document.createElement('a');

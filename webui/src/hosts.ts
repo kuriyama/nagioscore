@@ -175,17 +175,19 @@ function renderHostCell(
 	// cells (see renderTableBody's bgClass()).
 	td.className = STATUS_CLASS[status.status];
 
-	// Name and icons share one line, name left / icons right, matching
-	// show_host_detail()'s nested table (a <td align=left> and a
-	// <td align=right> side by side in the same cell) instead of each
-	// stacking as its own line.
-	const nameIconRow = document.createElement('div');
-	nameIconRow.style.display = 'flex';
-	nameIconRow.style.flexWrap = 'wrap';
-	nameIconRow.style.alignItems = 'center';
-	nameIconRow.style.justifyContent = 'space-between';
-	nameIconRow.style.gap = '4px';
-	td.appendChild(nameIconRow);
+	// Name, icons, and the Ack/Downtime actions all share ONE line, no
+	// wrap -- matching show_host_detail()'s single-row-per-host density
+	// (a nested <td align=left>/<td align=right> pair that never
+	// reflows) rather than reducing to a shorter but still multi-line
+	// layout. If a row's content genuinely doesn't fit, this lets the
+	// Host column grow wider (same as legacy's table auto-layout would)
+	// instead of wrapping to a second/third line.
+	const row = document.createElement('div');
+	row.style.display = 'flex';
+	row.style.alignItems = 'center';
+	row.style.gap = '6px';
+	row.style.whiteSpace = 'nowrap';
+	td.appendChild(row);
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoHostUrl(hostName);
@@ -193,7 +195,7 @@ function renderHostCell(
 	if (obj?.address) {
 		nameLink.title = obj.address;
 	}
-	nameIconRow.appendChild(nameLink);
+	row.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
 	if (status.problem_has_been_acknowledged) {
@@ -225,7 +227,7 @@ function renderHostCell(
 		icon(iconLine, `logos/${obj.icon_image}`, hostName);
 	}
 	icon(iconLine, 'status2.gif', 'View the status of all services for this host', statusCgiHostUrl(hostName));
-	nameIconRow.appendChild(iconLine);
+	row.appendChild(iconLine);
 
 	const actionsLine = document.createElement('div');
 	const isProblem = status.status === 'down' || status.status === 'unreachable';
@@ -250,7 +252,7 @@ function renderHostCell(
 			if (result.ok) onActionComplete();
 		}),
 	);
-	td.appendChild(actionsLine);
+	row.appendChild(actionsLine);
 
 	return td;
 }

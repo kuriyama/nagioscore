@@ -189,20 +189,19 @@ function renderServiceCell(
 	// distinction, ported from cgi/status.c's show_service_detail().
 	td.className = STATUS_CLASS[entry.status.status];
 
-	// Name and icons share one line, name left / icons right (see
-	// hosts.ts's renderHostCell for the rationale).
-	const nameIconRow = document.createElement('div');
-	nameIconRow.style.display = 'flex';
-	nameIconRow.style.flexWrap = 'wrap';
-	nameIconRow.style.alignItems = 'center';
-	nameIconRow.style.justifyContent = 'space-between';
-	nameIconRow.style.gap = '4px';
-	td.appendChild(nameIconRow);
+	// Name, icons, and the Ack/Downtime actions all share ONE line, no
+	// wrap (see hosts.ts's renderHostCell for the full rationale).
+	const row = document.createElement('div');
+	row.style.display = 'flex';
+	row.style.alignItems = 'center';
+	row.style.gap = '6px';
+	row.style.whiteSpace = 'nowrap';
+	td.appendChild(row);
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoServiceUrl(entry.hostName, entry.description);
 	nameLink.textContent = entry.description;
-	nameIconRow.appendChild(nameLink);
+	row.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
 	const s = entry.status;
@@ -232,7 +231,7 @@ function renderServiceCell(
 	if (obj?.icon_image) {
 		icon(iconLine, `logos/${obj.icon_image}`, entry.description);
 	}
-	nameIconRow.appendChild(iconLine);
+	row.appendChild(iconLine);
 
 	const actionsLine = document.createElement('div');
 	const isProblem = s.status === 'warning' || s.status === 'critical' || s.status === 'unknown';
@@ -257,7 +256,7 @@ function renderServiceCell(
 			if (result.ok) onActionComplete();
 		}),
 	);
-	td.appendChild(actionsLine);
+	row.appendChild(actionsLine);
 
 	return td;
 }

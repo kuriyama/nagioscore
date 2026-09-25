@@ -35,6 +35,11 @@ body {
 	flex: 1 1 auto;
 	min-width: 0;
 	padding: 10px;
+	/* See #nav's identical override above -- #splashpage's text-align:
+	   center (common.css) cascades down into every view rendered here
+	   (e.g. hosts.ts/services.ts's Status Information column) unless
+	   overridden. This was missed when #nav got the same fix. */
+	text-align: left;
 	}
 
 #searchresults {

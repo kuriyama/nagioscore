@@ -27,6 +27,14 @@ import { renderStatusTotals } from './statustotals';
 // status.cgi/statusmap.cgi/extinfo.cgi/outages.cgi) for consistency.
 const REFRESH_INTERVAL_MS = 90_000;
 
+// Temporarily hidden: the Ack/Downtime quick-action links (Phase C-3) cost
+// this row a visual layout legacy never had, and were reported as too big a
+// density/layout difference on a real install. The feature itself is still
+// wanted (acknowledge/schedule downtime without leaving the list) -- this
+// just needs a lower-impact presentation before it comes back. Leaving the
+// rendering code in place (just not appended) rather than deleting it.
+const SHOW_QUICK_ACTIONS = false;
+
 const STATUS_LABEL: Record<HostStatusValue, string> = {
 	up: 'UP',
 	down: 'DOWN',
@@ -175,20 +183,19 @@ function renderHostCell(
 	// cells (see renderTableBody's bgClass()).
 	td.className = STATUS_CLASS[status.status];
 
-	// Name, icons, and the Ack/Downtime actions all share ONE line, no
-	// wrap -- matching show_host_detail()'s single-row-per-host density
-	// (a nested <td align=left>/<td align=right> pair that never
-	// reflows) rather than reducing to a shorter but still multi-line
-	// layout. If a row's content genuinely doesn't fit, this lets the
-	// Host column grow wider (same as legacy's table auto-layout would)
-	// instead of wrapping to a second/third line.
+	// Name and icons share one line, name left / icons right (space-between)
+	// -- matching show_host_detail()'s nested <td align=left>/<td align=right>
+	// pair, which keeps the name readable at a glance instead of icons
+	// crowding right up against it. Not flex-wrap: wrap (that reflows
+	// icons onto their own line under any width pressure, which is what
+	// cost us a whole line before) and not white-space: nowrap (see
+	// services.ts's renderServiceCell -- that forces this column to grow
+	// unbounded for long text, squeezing every other column instead).
 	const row = document.createElement('div');
 	row.style.display = 'flex';
 	row.style.alignItems = 'center';
+	row.style.justifyContent = 'space-between';
 	row.style.gap = '6px';
-	// Not white-space: nowrap -- see services.ts's renderServiceCell for
-	// why (unbounded-width risk from long text), applied here too for
-	// consistency even though host names are usually shorter.
 	td.appendChild(row);
 
 	const nameLink = document.createElement('a');
@@ -231,30 +238,32 @@ function renderHostCell(
 	icon(iconLine, 'status2.gif', 'View the status of all services for this host', statusCgiHostUrl(hostName));
 	row.appendChild(iconLine);
 
-	const actionsLine = document.createElement('div');
-	const isProblem = status.status === 'down' || status.status === 'unreachable';
-	if (isProblem && !status.problem_has_been_acknowledged) {
+	if (SHOW_QUICK_ACTIONS) {
+		const actionsLine = document.createElement('div');
+		const isProblem = status.status === 'down' || status.status === 'unreachable';
+		if (isProblem && !status.problem_has_been_acknowledged) {
+			actionsLine.appendChild(
+				actionLink('Ack', async () => {
+					const opts = await promptAcknowledge(`host ${hostName}`);
+					if (!opts) return;
+					const result = await acknowledgeHost(hostName, opts);
+					setActionStatus(result.message);
+					if (result.ok) onActionComplete();
+				}),
+			);
+			actionsLine.appendChild(document.createTextNode(' '));
+		}
 		actionsLine.appendChild(
-			actionLink('Ack', async () => {
-				const opts = await promptAcknowledge(`host ${hostName}`);
+			actionLink('Downtime', async () => {
+				const opts = await promptDowntime(`host ${hostName}`);
 				if (!opts) return;
-				const result = await acknowledgeHost(hostName, opts);
+				const result = await scheduleHostDowntime(hostName, opts);
 				setActionStatus(result.message);
 				if (result.ok) onActionComplete();
 			}),
 		);
-		actionsLine.appendChild(document.createTextNode(' '));
+		row.appendChild(actionsLine);
 	}
-	actionsLine.appendChild(
-		actionLink('Downtime', async () => {
-			const opts = await promptDowntime(`host ${hostName}`);
-			if (!opts) return;
-			const result = await scheduleHostDowntime(hostName, opts);
-			setActionStatus(result.message);
-			if (result.ok) onActionComplete();
-		}),
-	);
-	row.appendChild(actionsLine);
 
 	return td;
 }

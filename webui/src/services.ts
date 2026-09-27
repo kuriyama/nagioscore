@@ -27,6 +27,9 @@ import { renderStatusTotals } from './statustotals';
 // Matches sample-config/cgi.cfg.in's default refresh_rate=90, same as hosts.ts.
 const REFRESH_INTERVAL_MS = 90_000;
 
+// See hosts.ts's identical constant for why.
+const SHOW_QUICK_ACTIONS = false;
+
 const STATUS_LABEL: Record<ServiceStatusValue, string> = {
 	ok: 'OK',
 	warning: 'WARNING',
@@ -189,19 +192,16 @@ function renderServiceCell(
 	// distinction, ported from cgi/status.c's show_service_detail().
 	td.className = STATUS_CLASS[entry.status.status];
 
-	// Name, icons, and the Ack/Downtime actions all share ONE line, no
-	// wrap (see hosts.ts's renderHostCell for the full rationale).
+	// Name left / icons right, one line (see hosts.ts's renderHostCell for
+	// the full rationale, including why not flex-wrap and not
+	// white-space: nowrap -- service descriptions can be arbitrarily long,
+	// real ones seen at 70+ characters, and forcing an unbroken line would
+	// let this column grow unbounded and squeeze every other column).
 	const row = document.createElement('div');
 	row.style.display = 'flex';
 	row.style.alignItems = 'center';
+	row.style.justifyContent = 'space-between';
 	row.style.gap = '6px';
-	// Not white-space: nowrap -- unlike hostnames, service descriptions
-	// can be arbitrarily long (real ones seen: 70+ characters), and
-	// forcing the whole row onto one unbroken line would let this
-	// column grow unbounded, squeezing every other column in the same
-	// table (e.g. wrapping the Host column's normally-short names).
-	// Left to wrap normally, this cell only grows past one line for
-	// those outliers, same as it would in a plain (non-flex) table cell.
 	td.appendChild(row);
 
 	const nameLink = document.createElement('a');
@@ -239,30 +239,32 @@ function renderServiceCell(
 	}
 	row.appendChild(iconLine);
 
-	const actionsLine = document.createElement('div');
-	const isProblem = s.status === 'warning' || s.status === 'critical' || s.status === 'unknown';
-	if (isProblem && !s.problem_has_been_acknowledged) {
+	if (SHOW_QUICK_ACTIONS) {
+		const actionsLine = document.createElement('div');
+		const isProblem = s.status === 'warning' || s.status === 'critical' || s.status === 'unknown';
+		if (isProblem && !s.problem_has_been_acknowledged) {
+			actionsLine.appendChild(
+				actionLink('Ack', async () => {
+					const opts = await promptAcknowledge(`service ${entry.description} on ${entry.hostName}`);
+					if (!opts) return;
+					const result = await acknowledgeService(entry.hostName, entry.description, opts);
+					setActionStatus(result.message);
+					if (result.ok) onActionComplete();
+				}),
+			);
+			actionsLine.appendChild(document.createTextNode(' '));
+		}
 		actionsLine.appendChild(
-			actionLink('Ack', async () => {
-				const opts = await promptAcknowledge(`service ${entry.description} on ${entry.hostName}`);
+			actionLink('Downtime', async () => {
+				const opts = await promptDowntime(`service ${entry.description} on ${entry.hostName}`);
 				if (!opts) return;
-				const result = await acknowledgeService(entry.hostName, entry.description, opts);
+				const result = await scheduleServiceDowntime(entry.hostName, entry.description, opts);
 				setActionStatus(result.message);
 				if (result.ok) onActionComplete();
 			}),
 		);
-		actionsLine.appendChild(document.createTextNode(' '));
+		row.appendChild(actionsLine);
 	}
-	actionsLine.appendChild(
-		actionLink('Downtime', async () => {
-			const opts = await promptDowntime(`service ${entry.description} on ${entry.hostName}`);
-			if (!opts) return;
-			const result = await scheduleServiceDowntime(entry.hostName, entry.description, opts);
-			setActionStatus(result.message);
-			if (result.ok) onActionComplete();
-		}),
-	);
-	row.appendChild(actionsLine);
 
 	return td;
 }

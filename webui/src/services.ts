@@ -3,6 +3,7 @@ import {
 	fetchServiceObjectDetails,
 	fetchServiceGroups,
 	fetchHostStatusDetails,
+	fetchHostObjectDetails,
 	extinfoHostUrl,
 	extinfoServiceUrl,
 	type ServiceStatusEntry,
@@ -10,6 +11,8 @@ import {
 	type ServiceGroupDetails,
 	type ServiceStatusValue,
 	type HostStatusDetails,
+	type HostObjectDetails,
+	type HostStatusValue,
 	type ProblemFilterMode,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
@@ -53,6 +56,16 @@ const STATUS_SEVERITY: Record<ServiceStatusValue, number> = {
 	unknown: 2,
 	pending: 3,
 	ok: 4,
+};
+
+// See hosts.ts's identical STATUS_CLASS -- used for the collapsed
+// host-group cell below (renderHostGroupCell), not the per-service Status
+// column (which uses the service STATUS_CLASS above).
+const HOST_STATUS_CLASS: Record<HostStatusValue, string> = {
+	up: 'statusHOSTUP',
+	down: 'statusHOSTDOWN',
+	unreachable: 'statusHOSTUNREACHABLE',
+	pending: 'statusHOSTPENDING',
 };
 
 /**
@@ -181,6 +194,68 @@ function actionLink(label: string, onClick: () => void): HTMLAnchorElement {
 	return a;
 }
 
+/**
+ * Port of cgi/status.c's show_service_detail() host-name column: shown
+ * once per *consecutive run* of rows sharing the same host (tracked via
+ * plain adjacency in the currently sorted/filtered row order -- see
+ * `last_host`/`new_host` in cgi/status.c, no rowspan involved), left blank
+ * on every other row. This groups visually whenever the current sort
+ * happens to put a host's services next to each other (always true for
+ * the default Host-then-Service order; only some of the time otherwise,
+ * e.g. sorting by Status), exactly matching upstream's behavior.
+ */
+function renderHostGroupCell(hostName: string, hostStatus: HostStatusDetails | undefined, hostObj: HostObjectDetails | undefined): HTMLTableCellElement {
+	const td = document.createElement('td');
+	if (hostStatus) {
+		td.className = HOST_STATUS_CLASS[hostStatus.status];
+	}
+
+	const row = document.createElement('div');
+	row.style.display = 'flex';
+	row.style.alignItems = 'center';
+	row.style.justifyContent = 'space-between';
+	row.style.gap = '6px';
+	td.appendChild(row);
+
+	const nameLink = document.createElement('a');
+	nameLink.href = extinfoHostUrl(hostName);
+	nameLink.textContent = hostName;
+	row.appendChild(nameLink);
+
+	if (hostStatus) {
+		const iconLine = document.createElement('div');
+		if (hostStatus.problem_has_been_acknowledged) {
+			icon(iconLine, 'ack.gif', 'This host problem has been acknowledged');
+		}
+		if (!hostStatus.notifications_enabled) {
+			icon(iconLine, 'ndisabled.gif', 'Notifications for this host have been disabled');
+		}
+		if (!hostStatus.checks_enabled && !hostStatus.accept_passive_checks) {
+			icon(iconLine, 'disabled.gif', 'Active and passive checks have been disabled for this host');
+		} else if (!hostStatus.checks_enabled) {
+			icon(iconLine, 'passiveonly.gif', 'Active checks have been disabled for this host, only passive checks are being accepted');
+		}
+		if (hostStatus.is_flapping) {
+			icon(iconLine, 'flapping.gif', 'This host is flapping between states');
+		}
+		if (hostStatus.scheduled_downtime_depth > 0) {
+			icon(iconLine, 'downtime.gif', 'This host is currently in a period of scheduled downtime');
+		}
+		if (hostObj?.notes_url) {
+			icon(iconLine, 'notes.gif', 'View extra host notes', hostObj.notes_url);
+		}
+		if (hostObj?.action_url) {
+			icon(iconLine, 'action.gif', 'Perform extra host actions', hostObj.action_url);
+		}
+		if (hostObj?.icon_image) {
+			icon(iconLine, `logos/${hostObj.icon_image}`, hostName);
+		}
+		row.appendChild(iconLine);
+	}
+
+	return td;
+}
+
 function renderServiceCell(
 	entry: ServiceStatusEntry,
 	obj: ServiceObjectDetails | undefined,
@@ -278,6 +353,7 @@ function renderTableBody(
 	memberFilter: Set<string> | null,
 	problemFilter: ProblemFilterMode,
 	hostStatus: Record<string, HostStatusDetails>,
+	hostObjects: Record<string, HostObjectDetails>,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): void {
@@ -288,19 +364,34 @@ function renderTableBody(
 	entries = [...entries].sort((a, b) => compareServices(a, b, sort));
 
 	let zebraOdd = false;
+	// Tracks whether the current row starts a new run of same-host rows,
+	// in whatever order `entries` is currently sorted/filtered into -- see
+	// renderHostGroupCell's comment.
+	let lastHostName: string | null = null;
 
 	for (const entry of entries) {
 		const s = entry.status;
 		const obj = objects.get(serviceKey(entry.hostName, entry.description));
 
+		const isNewHostGroup = entry.hostName !== lastHostName;
+		if (isNewHostGroup && lastHostName !== null) {
+			for (let i = 0; i < 2; i++) {
+				const spacerRow = document.createElement('tr');
+				const spacerCell = document.createElement('td');
+				spacerCell.colSpan = COLUMNS.length;
+				spacerRow.appendChild(spacerCell);
+				tbody.appendChild(spacerRow);
+			}
+		}
+		lastHostName = entry.hostName;
+
 		const row = document.createElement('tr');
 
-		const hostCell = document.createElement('td');
-		const hostLink = document.createElement('a');
-		hostLink.href = extinfoHostUrl(entry.hostName);
-		hostLink.textContent = entry.hostName;
-		hostCell.appendChild(hostLink);
-		row.appendChild(hostCell);
+		if (isNewHostGroup) {
+			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName]));
+		} else {
+			row.appendChild(document.createElement('td'));
+		}
 
 		row.appendChild(renderServiceCell(entry, obj, onActionComplete, setActionStatus));
 
@@ -365,6 +456,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	let currentObjects: Map<string, ServiceObjectDetails> = new Map();
 	let currentGroups: ServiceGroupDetails[] = [];
 	let currentHostStatus: Record<string, HostStatusDetails> = {};
+	let currentHostObjects: Record<string, HostObjectDetails> = {};
 	let currentQueryTime = 0;
 
 	let headerCells: HTMLTableCellElement[] = [];
@@ -448,6 +540,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 				currentMemberFilter(),
 				problemFilter,
 				currentHostStatus,
+				currentHostObjects,
 				() => void load(false),
 				setActionStatus,
 			);
@@ -490,6 +583,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		let objects;
 		let groups;
 		let hostStatusResult;
+		let hostObjects;
 		try {
 			// objectjson.cgi's notes_url/action_url/icon_image and the
 			// servicegroup membership list only change when the Nagios config
@@ -498,18 +592,21 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			// also sidesteps a real O(hosts * services) cost in objectjson.cgi's
 			// query=servicelist implementation (cgi/objectjson.c's
 			// json_object_servicelist(), same shape as statusjson.cgi's --
-			// see that file's fix) on a large deployment.
+			// see that file's fix) on a large deployment. Same reasoning for
+			// the host object details used by the collapsed host-group cell.
 			if (initial) {
-				[statusResult, objects, groups, hostStatusResult] = await Promise.all([
+				[statusResult, objects, groups, hostStatusResult, hostObjects] = await Promise.all([
 					fetchServiceStatusDetails(),
 					fetchServiceObjectDetails(),
 					fetchServiceGroups(),
 					fetchHostStatusDetails(),
+					fetchHostObjectDetails(),
 				]);
 			} else {
 				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(), fetchHostStatusDetails()]);
 				objects = currentObjects;
 				groups = currentGroups;
+				hostObjects = currentHostObjects;
 			}
 		} catch (err) {
 			if (!initial) {
@@ -530,6 +627,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		currentObjects = objects;
 		currentGroups = groups;
 		currentHostStatus = hostStatusResult.hosts;
+		currentHostObjects = hostObjects;
 
 		if (initial) {
 			container.innerHTML = '';

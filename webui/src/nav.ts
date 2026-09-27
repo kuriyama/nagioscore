@@ -11,6 +11,13 @@ export interface NavLink {
 	external?: boolean;
 	/** A second, "(Legacy)" link shown next to this one. */
 	legacyHref?: string;
+	/**
+	 * A second link shown in parentheses right after this one, e.g.
+	 * "Services (Unhandled)" -- matches html/side.html.in's original
+	 * Problems section ("Services" and "(Unhandled)" as two links on one
+	 * line, not two separate list items).
+	 */
+	secondaryLink?: { label: string; href: string };
 	children?: NavLink[];
 }
 
@@ -57,10 +64,16 @@ export function buildNavSections(cgiUrl: string): NavSection[] {
 			],
 			extraTitle: 'Problems',
 			extraLinks: [
-				{ label: 'Services', href: '#services?filter=problems' },
-				{ label: 'Services (Unhandled)', href: '#services?filter=unhandled' },
-				{ label: 'Hosts', href: '#hosts?filter=problems' },
-				{ label: 'Hosts (Unhandled)', href: '#hosts?filter=unhandled' },
+				{
+					label: 'Services',
+					href: '#services?filter=problems',
+					secondaryLink: { label: 'Unhandled', href: '#services?filter=unhandled' },
+				},
+				{
+					label: 'Hosts',
+					href: '#hosts?filter=problems',
+					secondaryLink: { label: 'Unhandled', href: '#hosts?filter=unhandled' },
+				},
 				{ label: 'Network Outages', href: `${cgiUrl}/outages.cgi` },
 			],
 		},
@@ -108,6 +121,15 @@ function linkAnchor(link: NavLink): HTMLLIElement {
 		legacy.href = link.legacyHref;
 		legacy.textContent = '(Legacy)';
 		li.appendChild(legacy);
+	}
+
+	if (link.secondaryLink) {
+		li.appendChild(document.createTextNode(' ('));
+		const secondary = document.createElement('a');
+		secondary.href = link.secondaryLink.href;
+		secondary.textContent = link.secondaryLink.label;
+		li.appendChild(secondary);
+		li.appendChild(document.createTextNode(')'));
 	}
 
 	if (link.children && link.children.length > 0) {

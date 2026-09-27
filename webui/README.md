@@ -18,6 +18,14 @@ npm run typecheck   # `tsc --noEmit`, also run by CI if configured
 `update-version` edits `src/dashboard.ts` directly for version/date bumps;
 re-run `npm run build` afterwards so the committed bundle picks up the change.
 
+**Cache-busting**: `../html/index.html.in` references `stylesheets/
+nagios-app.css?kuriyamaN` and `js/nagios-app.js?kuriyamaN` with a literal
+query string (there's no build-time substitution for it). Bump `N` to the
+`al2023-4.4.14-kuriyamaN` tag this commit is going into whenever either
+file changes, so a browser/proxy that cached the previous release's copy
+is forced to refetch -- a stale copy of either was once reported as an
+earlier release's fix "not having taken effect."
+
 ## Known behavioral differences from upstream
 
 Things a user coming from stock nagios-core's CGIs would notice are

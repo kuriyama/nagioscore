@@ -405,13 +405,17 @@ function renderTableBody(
 			zebraOdd = !zebraOdd;
 		}
 
+		// See hosts.ts's renderTableBody -- cgi/status.c marks these two
+		// cells `nowrap` explicitly.
 		const lastCheckCell = document.createElement('td');
 		lastCheckCell.className = bg;
+		lastCheckCell.style.whiteSpace = 'nowrap';
 		lastCheckCell.textContent = formatTimestamp(s.last_check);
 		row.appendChild(lastCheckCell);
 
 		const durationCell = document.createElement('td');
 		durationCell.className = bg;
+		durationCell.style.whiteSpace = 'nowrap';
 		durationCell.textContent = formatDuration(queryTime, s.last_state_change, s.last_state_change === 0);
 		row.appendChild(durationCell);
 

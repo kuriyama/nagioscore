@@ -7,7 +7,13 @@
 	<link rel="shortcut icon" href="images/favicon.ico" type="image/ico">
 	<link rel="stylesheet" type="text/css" href="stylesheets/common.css?4.4.14">
 	<link rel="stylesheet" type="text/css" href="stylesheets/status.css?4.4.14">
-	<link rel="stylesheet" type="text/css" href="stylesheets/nagios-app.css?4.4.14">
+	<!-- nagios-app.css/nagios-app.js change on every al2023-4.4.14-kuriyamaN
+	     release (unlike common.css/status.css, which only change with the
+	     underlying nagios core version); this query string is bumped by
+	     hand alongside that release number to bust caches -- a stale copy
+	     of either was reported as looking like an old release's fixes
+	     hadn't taken effect. See README.md for the release checklist. -->
+	<link rel="stylesheet" type="text/css" href="stylesheets/nagios-app.css?kuriyama37">
 
 	<script LANGUAGE="javascript">
 		// Other CGI-rendered pages (status.cgi, extinfo.cgi, cmd.cgi's own
@@ -27,6 +33,6 @@
 	<div id="nav"></div>
 	<div id="dashboard"></div>
 
-	<script type="text/javascript" src="js/nagios-app.js"></script>
+	<script type="text/javascript" src="js/nagios-app.js?kuriyama37"></script>
 </body>
 </html>

@@ -306,13 +306,19 @@ function renderTableBody(
 			zebraOdd = !zebraOdd;
 		}
 
+		// cgi/status.c's show_host_detail() marks these two cells `nowrap`
+		// explicitly (unlike the others); matched here since a narrow column
+		// wrapping a timestamp/duration mid-string reads worse than the
+		// column just being as wide as it needs to be.
 		const lastCheckCell = document.createElement('td');
 		lastCheckCell.className = bg;
+		lastCheckCell.style.whiteSpace = 'nowrap';
 		lastCheckCell.textContent = formatTimestamp(status.last_check);
 		row.appendChild(lastCheckCell);
 
 		const durationCell = document.createElement('td');
 		durationCell.className = bg;
+		durationCell.style.whiteSpace = 'nowrap';
 		durationCell.textContent = formatDuration(queryTime, status.last_state_change, status.last_state_change === 0);
 		row.appendChild(durationCell);
 

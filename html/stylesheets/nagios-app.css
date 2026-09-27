@@ -80,11 +80,24 @@ body {
 
 /* webui/src/hosts.ts and webui/src/services.ts's detail tables (table.status
    already comes from status.css). cgi/status.c's own show_host_detail()/
-   show_service_detail() table has no cellpadding attribute and no
-   font-size override of its own, so its cells render at common.css's
-   "* {font-size:8pt}" default with the browser's own (near-zero) default
-   td padding -- a previous pass here added 10pt/2px-4px, measurably
-   looser than that and reported as reduced information density. */
+   show_service_detail() table has no font-size override of its own (so
+   its cells render at common.css's "* {font-size:8pt}" default -- a
+   previous pass here added 10pt, measurably looser than that and
+   reported as reduced information density), but real-browser inspection
+   of an actual upstream page shows 2px left/right and 0px top/bottom
+   padding on these cells, so that's matched explicitly here rather than
+   left to whatever the browser's own default td padding happens to be.
+   width:100% matches the table's own width='100%' HTML attribute in
+   cgi/status.c, so column widths stay put when the row count/content
+   changes (e.g. switching the Problems/Unhandled Problems filter)
+   instead of the whole table visibly resizing. */
+table.status {
+	width: 100%;
+	}
+
+table.status td {
+	padding: 0 2px;
+	}
 
 #detailActionStatus {
 	font-size: 9pt;

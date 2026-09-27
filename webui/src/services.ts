@@ -203,11 +203,25 @@ function actionLink(label: string, onClick: () => void): HTMLAnchorElement {
  * happens to put a host's services next to each other (always true for
  * the default Host-then-Service order; only some of the time otherwise,
  * e.g. sorting by Status), exactly matching upstream's behavior.
+ *
+ * Coloring: only vivid (statusHOSTDOWN/statusHOSTUNREACHABLE) when the
+ * host itself is down/unreachable, matching `host_status_bg_class` in
+ * cgi/status.c -- an up/pending host here just gets plain zebra shading
+ * (`odd`), same as the Host/Service name cells always do (see
+ * renderServiceCell). Only the actual Status column cell is ever the
+ * fully saturated statusOK/statusHOSTUP/etc. color.
  */
-function renderHostGroupCell(hostName: string, hostStatus: HostStatusDetails | undefined, hostObj: HostObjectDetails | undefined): HTMLTableCellElement {
+function renderHostGroupCell(
+	hostName: string,
+	hostStatus: HostStatusDetails | undefined,
+	hostObj: HostObjectDetails | undefined,
+	zebraOdd: boolean,
+): HTMLTableCellElement {
 	const td = document.createElement('td');
-	if (hostStatus) {
+	if (hostStatus && (hostStatus.status === 'down' || hostStatus.status === 'unreachable')) {
 		td.className = HOST_STATUS_CLASS[hostStatus.status];
+	} else {
+		td.className = zebraOdd ? 'statusOdd' : 'statusEven';
 	}
 
 	const row = document.createElement('div');
@@ -259,13 +273,16 @@ function renderHostGroupCell(hostName: string, hostStatus: HostStatusDetails | u
 function renderServiceCell(
 	entry: ServiceStatusEntry,
 	obj: ServiceObjectDetails | undefined,
+	bg: string,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
 	const td = document.createElement('td');
-	// See hosts.ts's renderHostCell -- same statusHOST*-vs-statusBG*
-	// distinction, ported from cgi/status.c's show_service_detail().
-	td.className = STATUS_CLASS[entry.status.status];
+	// cgi/status.c's show_service_detail() colors the service name cell
+	// with status_bg_class (the same paler, zebra/ack/downtime-aware
+	// class used on Last Check/Duration/etc) -- NOT the vivid status_class
+	// reserved for the Status column. See renderHostGroupCell's comment.
+	td.className = bg;
 
 	// Name left / icons right, one line (see hosts.ts's renderHostCell for
 	// the full rationale, including why not flex-wrap and not
@@ -387,20 +404,27 @@ function renderTableBody(
 
 		const row = document.createElement('tr');
 
+		// cgi/status.c's show_service_detail() only gives the vivid
+		// status_class (statusOK/statusWARNING/...) to the actual Status
+		// column; the Host and Service name cells get the paler,
+		// zebra-or-ack/downtime-aware status_bg_class instead (and the
+		// collapsed host-group cell is plain zebra unless the HOST itself
+		// is down/unreachable) -- see renderHostGroupCell.
+		const bg = bgClass(s.status, s.problem_has_been_acknowledged, s.scheduled_downtime_depth > 0, zebraOdd);
+
 		if (isNewHostGroup) {
-			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName]));
+			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName], zebraOdd));
 		} else {
 			row.appendChild(document.createElement('td'));
 		}
 
-		row.appendChild(renderServiceCell(entry, obj, onActionComplete, setActionStatus));
+		row.appendChild(renderServiceCell(entry, obj, bg, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[s.status];
 		statusCell.textContent = STATUS_LABEL[s.status];
 		row.appendChild(statusCell);
 
-		const bg = bgClass(s.status, s.problem_has_been_acknowledged, s.scheduled_downtime_depth > 0, zebraOdd);
 		if (s.status === 'ok' || s.status === 'pending') {
 			zebraOdd = !zebraOdd;
 		}

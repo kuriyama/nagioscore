@@ -280,28 +280,31 @@ void json_free_member(json_object_member *mp, int free_children) {
 	}
 
 /* Adds a member to a JSON object and returns a pointer to the new member.
-	Returns NULL on failure. */
+	Returns NULL on failure.
+
+	Grows `members` by doubling (8, 16, 32, ...) instead of by exactly one
+	slot per call. A large response (query=servicelist&details=true on a
+	sizeable install can put tens of thousands of members on the
+	top-level per-host object) hitting the old grow-by-one path meant
+	realloc() had to copy the entire existing array on every single
+	append, making the whole response O(members^2) instead of O(members)
+	-- reported from a real install as a single query taking several
+	seconds for a several-megabyte response. Doubling makes the total
+	copying work across all appends O(members) amortized. */
 static json_object_member * json_object_add_member(json_object *obj) {
 
 	json_object_member **new_members;
+	unsigned new_capacity;
 
-	if(0 == obj->member_count) {
-		obj->members = calloc(1, sizeof(json_object_member *));
-		if(NULL == obj->members) {
-			obj->member_count = 0;
-			return NULL;
-			}
-		}
-	else {
+	if(obj->member_count >= obj->member_capacity) {
+		new_capacity = (0 == obj->member_capacity) ? 8 : (obj->member_capacity * 2);
 		new_members = realloc(obj->members,
-				((obj->member_count + 1) * sizeof(json_object_member *)));
+				(new_capacity * sizeof(json_object_member *)));
 		if(NULL == new_members) {
-			free(obj->members);
-			obj->members = NULL;
-			obj->member_count = 0;
 			return NULL;
 			}
 		obj->members = new_members;
+		obj->member_capacity = new_capacity;
 		}
 	obj->members[ obj->member_count] = calloc(1, sizeof(json_object_member));
 	if(NULL == obj->members[ obj->member_count]) {

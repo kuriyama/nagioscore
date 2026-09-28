@@ -56,6 +56,10 @@ typedef struct json_object_member_struct {
 
 typedef struct json_object_struct {
 	unsigned member_count;
+	/* Allocated slots in `members`, always >= member_count. Lets
+	   json_object_add_member() grow the array by doubling instead of by
+	   one slot per call -- see that function's comment. */
+	unsigned member_capacity;
 	json_object_member **members;
 	} json_object;
 

@@ -466,23 +466,35 @@ void strip(char *buffer) {
 /**************************************************
  *************** HASH FUNCTIONS *******************
  **************************************************/
-/* dual hash function */
+/* dual hash function
+ *
+ * This used to be a plain sum of character values. That's
+ * permutation-invariant and has almost no spread for the very common
+ * case of same-length, mostly-shared-prefix names (e.g. "host00001" ..
+ * "host49999": the sum only ranges over the ~45 possible digit-sum
+ * totals, so on a large install nearly all objects hash into a
+ * handful of buckets no matter how many hashslots there are --
+ * measured taking multiple seconds of CPU in statusjson.cgi's
+ * hoststatus/servicestatus hash insert+lookup on a large-scale
+ * install, because chain length stayed O(n) regardless of table size).
+ * Replaced with djb2 (hash*33 + c per byte), which is
+ * position-sensitive so names like these spread across the full
+ * range instead of collapsing to a few sums. */
 int hashfunc(const char *name1, const char *name2, int hashslots) {
-	unsigned int i, result;
+	unsigned long hash;
+	const char *p;
 
-	result = 0;
+	hash = 5381;
 
 	if(name1)
-		for(i = 0; i < strlen(name1); i++)
-			result += name1[i];
+		for(p = name1; *p != '\x0'; p++)
+			hash = ((hash << 5) + hash) + (unsigned char)*p;
 
 	if(name2)
-		for(i = 0; i < strlen(name2); i++)
-			result += name2[i];
+		for(p = name2; *p != '\x0'; p++)
+			hash = ((hash << 5) + hash) + (unsigned char)*p;
 
-	result = result % hashslots;
-
-	return result;
+	return (int)(hash % (unsigned long)hashslots);
 	}
 
 /* dual hash data comparison */

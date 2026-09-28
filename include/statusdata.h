@@ -38,8 +38,21 @@
 
 	/*************************** CHAINED HASH LIMITS ***************************/
 
-#define SERVICESTATUS_HASHSLOTS      1024
-#define HOSTSTATUS_HASHSLOTS         1024
+/* add_*status_to_hashlist()/find_*status() insert/lookup by walking a
+   SORTED chain within one bucket (see common/statusdata.c), so average
+   chain length -- object_count / *_HASHSLOTS -- has to stay small
+   regardless of install size, or the whole table degrades from O(1) to
+   O(n) per operation, and building it from scratch (one insert per
+   object) from O(n) to O(n^2). 1024 was fine for a small/medium
+   install but was measured taking multiple seconds of CPU just on hash
+   insert/lookup for statusjson.cgi's servicelist query on a large-scale
+   install (tens of thousands of hosts/services) -- reported as a single
+   ~5MB response taking ~7s. Bumped by 64x; even a 500,000-service
+   install now averages a chain length under 8. Purely an internal
+   sizing constant (two fixed-size pointer arrays, ~1MB combined at this
+   size) with no format/serialization implications. */
+#define SERVICESTATUS_HASHSLOTS      65536
+#define HOSTSTATUS_HASHSLOTS         65536
 
 
 	/**************************** DATA STRUCTURES ******************************/

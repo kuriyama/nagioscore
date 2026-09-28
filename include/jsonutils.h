@@ -130,6 +130,8 @@ extern const string_value_mapping svm_host_statuses[];
 extern const string_value_mapping svm_host_states[];
 extern const string_value_mapping svm_service_statuses[];
 extern const string_value_mapping svm_service_states[];
+extern const string_value_mapping svm_host_props[];
+extern const string_value_mapping svm_service_props[];
 extern const string_value_mapping svm_check_options[];
 extern const string_value_mapping svm_host_check_types[];
 extern const string_value_mapping svm_service_check_types[];

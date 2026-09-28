@@ -126,6 +126,59 @@ const string_value_mapping svm_service_states[] = {
 	{ NULL, -1, NULL },
 	};
 
+/* cgi/status.c's hostprops= filter (include/cgiutils.h's HOST_* property
+	bits), ported here so statusjson.cgi's hostlist/servicelist can take
+	the same "hostprops"/"serviceprops" filter server-side -- see
+	passes_host_properties_filter()/passes_service_properties_filter()
+	in cgi/statusjson.c. */
+const string_value_mapping svm_host_props[] = {
+	{ "scheduled_downtime", HOST_SCHEDULED_DOWNTIME, "SCHEDULED_DOWNTIME" },
+	{ "no_scheduled_downtime", HOST_NO_SCHEDULED_DOWNTIME, "NO_SCHEDULED_DOWNTIME" },
+	{ "acknowledged", HOST_STATE_ACKNOWLEDGED, "STATE_ACKNOWLEDGED" },
+	{ "unacknowledged", HOST_STATE_UNACKNOWLEDGED, "STATE_UNACKNOWLEDGED" },
+	{ "checks_disabled", HOST_CHECKS_DISABLED, "CHECKS_DISABLED" },
+	{ "checks_enabled", HOST_CHECKS_ENABLED, "CHECKS_ENABLED" },
+	{ "event_handler_disabled", HOST_EVENT_HANDLER_DISABLED, "EVENT_HANDLER_DISABLED" },
+	{ "event_handler_enabled", HOST_EVENT_HANDLER_ENABLED, "EVENT_HANDLER_ENABLED" },
+	{ "flap_detection_disabled", HOST_FLAP_DETECTION_DISABLED, "FLAP_DETECTION_DISABLED" },
+	{ "flap_detection_enabled", HOST_FLAP_DETECTION_ENABLED, "FLAP_DETECTION_ENABLED" },
+	{ "flapping", HOST_IS_FLAPPING, "IS_FLAPPING" },
+	{ "not_flapping", HOST_IS_NOT_FLAPPING, "IS_NOT_FLAPPING" },
+	{ "notifications_disabled", HOST_NOTIFICATIONS_DISABLED, "NOTIFICATIONS_DISABLED" },
+	{ "notifications_enabled", HOST_NOTIFICATIONS_ENABLED, "NOTIFICATIONS_ENABLED" },
+	{ "passive_checks_disabled", HOST_PASSIVE_CHECKS_DISABLED, "PASSIVE_CHECKS_DISABLED" },
+	{ "passive_checks_enabled", HOST_PASSIVE_CHECKS_ENABLED, "PASSIVE_CHECKS_ENABLED" },
+	{ "passive_check", HOST_PASSIVE_CHECK, "PASSIVE_CHECK" },
+	{ "active_check", HOST_ACTIVE_CHECK, "ACTIVE_CHECK" },
+	{ "hard_state", HOST_HARD_STATE, "HARD_STATE" },
+	{ "soft_state", HOST_SOFT_STATE, "SOFT_STATE" },
+	{ NULL, -1, NULL },
+	};
+
+const string_value_mapping svm_service_props[] = {
+	{ "scheduled_downtime", SERVICE_SCHEDULED_DOWNTIME, "SCHEDULED_DOWNTIME" },
+	{ "no_scheduled_downtime", SERVICE_NO_SCHEDULED_DOWNTIME, "NO_SCHEDULED_DOWNTIME" },
+	{ "acknowledged", SERVICE_STATE_ACKNOWLEDGED, "STATE_ACKNOWLEDGED" },
+	{ "unacknowledged", SERVICE_STATE_UNACKNOWLEDGED, "STATE_UNACKNOWLEDGED" },
+	{ "checks_disabled", SERVICE_CHECKS_DISABLED, "CHECKS_DISABLED" },
+	{ "checks_enabled", SERVICE_CHECKS_ENABLED, "CHECKS_ENABLED" },
+	{ "event_handler_disabled", SERVICE_EVENT_HANDLER_DISABLED, "EVENT_HANDLER_DISABLED" },
+	{ "event_handler_enabled", SERVICE_EVENT_HANDLER_ENABLED, "EVENT_HANDLER_ENABLED" },
+	{ "flap_detection_disabled", SERVICE_FLAP_DETECTION_DISABLED, "FLAP_DETECTION_DISABLED" },
+	{ "flap_detection_enabled", SERVICE_FLAP_DETECTION_ENABLED, "FLAP_DETECTION_ENABLED" },
+	{ "flapping", SERVICE_IS_FLAPPING, "IS_FLAPPING" },
+	{ "not_flapping", SERVICE_IS_NOT_FLAPPING, "IS_NOT_FLAPPING" },
+	{ "notifications_disabled", SERVICE_NOTIFICATIONS_DISABLED, "NOTIFICATIONS_DISABLED" },
+	{ "notifications_enabled", SERVICE_NOTIFICATIONS_ENABLED, "NOTIFICATIONS_ENABLED" },
+	{ "passive_checks_disabled", SERVICE_PASSIVE_CHECKS_DISABLED, "PASSIVE_CHECKS_DISABLED" },
+	{ "passive_checks_enabled", SERVICE_PASSIVE_CHECKS_ENABLED, "PASSIVE_CHECKS_ENABLED" },
+	{ "passive_check", SERVICE_PASSIVE_CHECK, "PASSIVE_CHECK" },
+	{ "active_check", SERVICE_ACTIVE_CHECK, "ACTIVE_CHECK" },
+	{ "hard_state", SERVICE_HARD_STATE, "HARD_STATE" },
+	{ "soft_state", SERVICE_SOFT_STATE, "SOFT_STATE" },
+	{ NULL, -1, NULL },
+	};
+
 const string_value_mapping svm_check_options[] = {
 	{ "force_execution", CHECK_OPTION_FORCE_EXECUTION, "FORCE_EXECUTION" },
 	{ "freshness_check", CHECK_OPTION_FRESHNESS_CHECK, "FRESHNESS_CHECK" },

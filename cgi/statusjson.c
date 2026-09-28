@@ -897,10 +897,11 @@ int main(void) {
 				last_status_data_update, &current_authdata,
 				RESULT_SUCCESS, ""));
 		json_object_append_object(json_root, "data", 
-				json_status_hostlist(cgi_data.format_options, cgi_data.start, 
-				cgi_data.count, cgi_data.details, cgi_data.use_parent_host, 
-				cgi_data.parent_host, cgi_data.use_child_host, 
+				json_status_hostlist(cgi_data.format_options, cgi_data.start,
+				cgi_data.count, cgi_data.details, cgi_data.use_parent_host,
+				cgi_data.parent_host, cgi_data.use_child_host,
 				cgi_data.child_host, cgi_data.hostgroup, cgi_data.host_statuses,
+				cgi_data.host_props,
 				cgi_data.contact, cgi_data.host_time_field, cgi_data.start_time,
 				cgi_data.end_time, cgi_data.contactgroup,
 				cgi_data.check_timeperiod,
@@ -960,13 +961,14 @@ int main(void) {
 				last_status_data_update, &current_authdata,
 				RESULT_SUCCESS, ""));
 		json_object_append_object(json_root, "data", 
-				json_status_servicelist(cgi_data.format_options, cgi_data.start, 
-				cgi_data.count, cgi_data.details, cgi_data.host, 
-				cgi_data.use_parent_host, cgi_data.parent_host, 
-				cgi_data.use_child_host, cgi_data.child_host, 
+				json_status_servicelist(cgi_data.format_options, cgi_data.start,
+				cgi_data.count, cgi_data.details, cgi_data.host,
+				cgi_data.use_parent_host, cgi_data.parent_host,
+				cgi_data.use_child_host, cgi_data.child_host,
 				cgi_data.hostgroup, cgi_data.servicegroup,
-				cgi_data.host_statuses, cgi_data.service_statuses, 
-				cgi_data.contact, cgi_data.service_time_field, 
+				cgi_data.host_statuses, cgi_data.service_statuses,
+				cgi_data.service_props,
+				cgi_data.contact, cgi_data.service_time_field,
 				cgi_data.start_time, cgi_data.end_time, 
 				cgi_data.service_description, cgi_data.parent_service_name,
 				cgi_data.child_service_name, cgi_data.contactgroup,
@@ -1209,6 +1211,7 @@ void init_cgi_data(status_json_cgi_data *cgi_data) {
 	cgi_data->host_name = NULL;
 	cgi_data->host = NULL;
 	cgi_data->host_statuses = HOST_STATUS_ALL;
+	cgi_data->host_props = 0;
 	cgi_data->hostgroup_name = NULL;
 	cgi_data->hostgroup = NULL;
 	cgi_data->servicegroup_name = NULL;
@@ -1216,6 +1219,7 @@ void init_cgi_data(status_json_cgi_data *cgi_data) {
 	cgi_data->service_description = NULL;
 	cgi_data->service = NULL;
 	cgi_data->service_statuses = SERVICE_STATUS_ALL;
+	cgi_data->service_props = 0;
 	cgi_data->parent_service_name = NULL;
 	cgi_data->child_service_name = NULL;
 	cgi_data->contactgroup_name = NULL;
@@ -1399,12 +1403,25 @@ int process_cgivars(json_object *json_root, status_json_cgi_data *cgi_data,
 
 		else if(!strcmp(variables[x], "hoststatus")) {
 			cgi_data->host_statuses = 0;
-			if((result = parse_bitmask_cgivar(THISCGI, 
-					svm_get_string_from_value(cgi_data->query, valid_queries), 
+			if((result = parse_bitmask_cgivar(THISCGI,
+					svm_get_string_from_value(cgi_data->query, valid_queries),
 					get_query_status(query_status, cgi_data->query),
 					json_root, query_time, authinfo, variables[x],
 					variables[x+1], svm_host_statuses,
 					&(cgi_data->host_statuses))) != RESULT_SUCCESS) {
+				break;
+				}
+			x++;
+			}
+
+		else if(!strcmp(variables[x], "hostprops")) {
+			cgi_data->host_props = 0;
+			if((result = parse_bitmask_cgivar(THISCGI,
+					svm_get_string_from_value(cgi_data->query, valid_queries),
+					get_query_status(query_status, cgi_data->query),
+					json_root, query_time, authinfo, variables[x],
+					variables[x+1], svm_host_props,
+					&(cgi_data->host_props))) != RESULT_SUCCESS) {
 				break;
 				}
 			x++;
@@ -1424,12 +1441,25 @@ int process_cgivars(json_object *json_root, status_json_cgi_data *cgi_data,
 
 		else if(!strcmp(variables[x], "servicestatus")) {
 			cgi_data->service_statuses = 0;
-			if((result = parse_bitmask_cgivar(THISCGI, 
-					svm_get_string_from_value(cgi_data->query, valid_queries), 
+			if((result = parse_bitmask_cgivar(THISCGI,
+					svm_get_string_from_value(cgi_data->query, valid_queries),
 					get_query_status(query_status, cgi_data->query),
 					json_root, query_time, authinfo, variables[x],
 					variables[x+1], svm_service_statuses,
 					&(cgi_data->service_statuses))) != RESULT_SUCCESS) {
+				break;
+				}
+			x++;
+			}
+
+		else if(!strcmp(variables[x], "serviceprops")) {
+			cgi_data->service_props = 0;
+			if((result = parse_bitmask_cgivar(THISCGI,
+					svm_get_string_from_value(cgi_data->query, valid_queries),
+					get_query_status(query_status, cgi_data->query),
+					json_root, query_time, authinfo, variables[x],
+					variables[x+1], svm_service_props,
+					&(cgi_data->service_props))) != RESULT_SUCCESS) {
 				break;
 				}
 			x++;
@@ -2660,10 +2690,108 @@ json_object *json_status_hostcount(unsigned format_options, int use_parent_host,
 	return json_data;
 	}
 
+/* Port of cgi/status.c's passes_host_properties_filter() (see
+	include/cgiutils.h's HOST_* property bits): unlike the STATUS filter
+	(host_statuses, checked separately), a 0 host_props means "no
+	property filter" -- every check below only applies for a bit the
+	caller actually set. */
+int passes_host_properties_filter(hoststatus *temp_hoststatus, unsigned host_props) {
+
+	if((host_props & HOST_SCHEDULED_DOWNTIME) && temp_hoststatus->scheduled_downtime_depth <= 0)
+		return FALSE;
+	if((host_props & HOST_NO_SCHEDULED_DOWNTIME) && temp_hoststatus->scheduled_downtime_depth > 0)
+		return FALSE;
+	if((host_props & HOST_STATE_ACKNOWLEDGED) && temp_hoststatus->problem_has_been_acknowledged == FALSE)
+		return FALSE;
+	if((host_props & HOST_STATE_UNACKNOWLEDGED) && temp_hoststatus->problem_has_been_acknowledged == TRUE)
+		return FALSE;
+	if((host_props & HOST_CHECKS_DISABLED) && temp_hoststatus->checks_enabled == TRUE)
+		return FALSE;
+	if((host_props & HOST_CHECKS_ENABLED) && temp_hoststatus->checks_enabled == FALSE)
+		return FALSE;
+	if((host_props & HOST_EVENT_HANDLER_DISABLED) && temp_hoststatus->event_handler_enabled == TRUE)
+		return FALSE;
+	if((host_props & HOST_EVENT_HANDLER_ENABLED) && temp_hoststatus->event_handler_enabled == FALSE)
+		return FALSE;
+	if((host_props & HOST_FLAP_DETECTION_DISABLED) && temp_hoststatus->flap_detection_enabled == TRUE)
+		return FALSE;
+	if((host_props & HOST_FLAP_DETECTION_ENABLED) && temp_hoststatus->flap_detection_enabled == FALSE)
+		return FALSE;
+	if((host_props & HOST_IS_FLAPPING) && temp_hoststatus->is_flapping == FALSE)
+		return FALSE;
+	if((host_props & HOST_IS_NOT_FLAPPING) && temp_hoststatus->is_flapping == TRUE)
+		return FALSE;
+	if((host_props & HOST_NOTIFICATIONS_DISABLED) && temp_hoststatus->notifications_enabled == TRUE)
+		return FALSE;
+	if((host_props & HOST_NOTIFICATIONS_ENABLED) && temp_hoststatus->notifications_enabled == FALSE)
+		return FALSE;
+	if((host_props & HOST_PASSIVE_CHECKS_DISABLED) && temp_hoststatus->accept_passive_checks == TRUE)
+		return FALSE;
+	if((host_props & HOST_PASSIVE_CHECKS_ENABLED) && temp_hoststatus->accept_passive_checks == FALSE)
+		return FALSE;
+	if((host_props & HOST_PASSIVE_CHECK) && temp_hoststatus->check_type == CHECK_TYPE_ACTIVE)
+		return FALSE;
+	if((host_props & HOST_ACTIVE_CHECK) && temp_hoststatus->check_type == CHECK_TYPE_PASSIVE)
+		return FALSE;
+	if((host_props & HOST_HARD_STATE) && temp_hoststatus->state_type == SOFT_STATE)
+		return FALSE;
+	if((host_props & HOST_SOFT_STATE) && temp_hoststatus->state_type == HARD_STATE)
+		return FALSE;
+
+	return TRUE;
+	}
+
+/* Port of cgi/status.c's passes_service_properties_filter(). */
+int passes_service_properties_filter(servicestatus *temp_servicestatus, unsigned service_props) {
+
+	if((service_props & SERVICE_SCHEDULED_DOWNTIME) && temp_servicestatus->scheduled_downtime_depth <= 0)
+		return FALSE;
+	if((service_props & SERVICE_NO_SCHEDULED_DOWNTIME) && temp_servicestatus->scheduled_downtime_depth > 0)
+		return FALSE;
+	if((service_props & SERVICE_STATE_ACKNOWLEDGED) && temp_servicestatus->problem_has_been_acknowledged == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_STATE_UNACKNOWLEDGED) && temp_servicestatus->problem_has_been_acknowledged == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_CHECKS_DISABLED) && temp_servicestatus->checks_enabled == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_CHECKS_ENABLED) && temp_servicestatus->checks_enabled == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_EVENT_HANDLER_DISABLED) && temp_servicestatus->event_handler_enabled == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_EVENT_HANDLER_ENABLED) && temp_servicestatus->event_handler_enabled == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_FLAP_DETECTION_DISABLED) && temp_servicestatus->flap_detection_enabled == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_FLAP_DETECTION_ENABLED) && temp_servicestatus->flap_detection_enabled == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_IS_FLAPPING) && temp_servicestatus->is_flapping == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_IS_NOT_FLAPPING) && temp_servicestatus->is_flapping == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_NOTIFICATIONS_DISABLED) && temp_servicestatus->notifications_enabled == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_NOTIFICATIONS_ENABLED) && temp_servicestatus->notifications_enabled == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_PASSIVE_CHECKS_DISABLED) && temp_servicestatus->accept_passive_checks == TRUE)
+		return FALSE;
+	if((service_props & SERVICE_PASSIVE_CHECKS_ENABLED) && temp_servicestatus->accept_passive_checks == FALSE)
+		return FALSE;
+	if((service_props & SERVICE_PASSIVE_CHECK) && temp_servicestatus->check_type == CHECK_TYPE_ACTIVE)
+		return FALSE;
+	if((service_props & SERVICE_ACTIVE_CHECK) && temp_servicestatus->check_type == CHECK_TYPE_PASSIVE)
+		return FALSE;
+	if((service_props & SERVICE_HARD_STATE) && temp_servicestatus->state_type == SOFT_STATE)
+		return FALSE;
+	if((service_props & SERVICE_SOFT_STATE) && temp_servicestatus->state_type == HARD_STATE)
+		return FALSE;
+
+	return TRUE;
+	}
+
 json_object *json_status_hostlist(unsigned format_options, int start, int count,
 		int details, int use_parent_host, host *parent_host, int use_child_host,
-		host *child_host, hostgroup *temp_hostgroup, int host_statuses, 
-		contact *temp_contact, int time_field, time_t start_time, 
+		host *child_host, hostgroup *temp_hostgroup, int host_statuses,
+		unsigned host_props, contact *temp_contact, int time_field, time_t start_time,
 		time_t end_time, contactgroup *temp_contactgroup,
 		timeperiod *check_timeperiod, timeperiod *notification_timeperiod,
 		command *check_command, command *event_handler) {
@@ -2709,13 +2837,19 @@ json_object *json_status_hostlist(unsigned format_options, int start, int count,
 			continue;
 			}
 
+		/* If the host doesn't match the requested properties
+			(ack/downtime/checks-enabled/etc.), skip it */
+		if(passes_host_properties_filter(temp_hoststatus, host_props) == FALSE) {
+			continue;
+			}
+
 		/* If the current item passes the start and limit tests, display it */
 		if( passes_start_and_count_limits(start, count, current, counted)) {
 			if( details > 0) {
 				json_host_details = json_new_object();
-				json_status_host_details(json_host_details, format_options, 
+				json_status_host_details(json_host_details, format_options,
 						temp_host, temp_hoststatus);
-				json_object_append_object(json_hostlist, temp_host->name, 
+				json_object_append_object(json_hostlist, temp_host->name,
 						json_host_details);
 				}
 			else {
@@ -2876,10 +3010,20 @@ int json_status_service_passes_host_selection(host *temp_host,
 		return 0;
 		}
 
-	/* If we cannot get the status of the host, skip it. This should 
+	/* If we cannot get the status of the host, skip it. This should
 		probably return an error and doing so is in the todo list. */
 	temp_hoststatus = find_hoststatus(temp_host->name);
 	if( NULL == temp_hoststatus) {
+		return 0;
+		}
+
+	/* If the status of the host does not match one of the statuses the
+		user requested, skip its services. host_statuses was already
+		threaded all the way through to this function, but nothing here
+		ever actually checked it against the host's status -- so a
+		hoststatus= filter had no effect on query=servicelist at all until
+		this fix. */
+	if(!(temp_hoststatus->status & host_statuses)) {
 		return 0;
 		}
 
@@ -3371,11 +3515,12 @@ static service **host_services_in_registration_order(host *hst, int *out_count) 
 	}
 
 json_object *json_status_servicelist(unsigned format_options, int start,
-		int count, int details, host *match_host, int use_parent_host, 
-		host *parent_host, int use_child_host, host *child_host, 
-		hostgroup *temp_hostgroup, servicegroup *temp_servicegroup, 
-		int host_statuses, int service_statuses, contact *temp_contact,
-		int time_field, time_t start_time, time_t end_time, 
+		int count, int details, host *match_host, int use_parent_host,
+		host *parent_host, int use_child_host, host *child_host,
+		hostgroup *temp_hostgroup, servicegroup *temp_servicegroup,
+		int host_statuses, int service_statuses, unsigned service_props,
+		contact *temp_contact,
+		int time_field, time_t start_time, time_t end_time,
 		char *service_description, char *parent_service_name,
 		char *child_service_name, contactgroup *temp_contactgroup,
 		timeperiod *check_timeperiod, timeperiod *notification_timeperiod,
@@ -3455,6 +3600,12 @@ json_object *json_status_servicelist(unsigned format_options, int start,
 			/* If the status of the service does not match one of the status the
 				user requested, skip the service */
 			if(!(temp_servicestatus->status & service_statuses)) {
+				continue;
+				}
+
+			/* If the service doesn't match the requested properties
+				(ack/downtime/checks-enabled/etc.), skip it */
+			if(passes_service_properties_filter(temp_servicestatus, service_props) == FALSE) {
 				continue;
 				}
 

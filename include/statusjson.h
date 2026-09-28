@@ -58,6 +58,12 @@ typedef struct status_json_cgi_data_struct {
 	host *		host;
 	/* The host status selector values */
 	unsigned	host_statuses;
+	/* The host properties (ack/downtime/checks-enabled/etc.) selector
+		bitmask -- see include/cgiutils.h's HOST_* property bits, same
+		model as cgi/status.c's own hostprops= filter, ported here so
+		servicelist/hostlist can filter server-side (e.g. "Unhandled
+		Problems") instead of always returning every host/service. */
+	unsigned	host_props;
 	/* Name of hostgroup for which details should be returned */
 	char *		hostgroup_name;
 	/* Hostgroup whose name is hostgroup_name */
@@ -73,6 +79,8 @@ typedef struct status_json_cgi_data_struct {
 	service *	service;
 	/* The service status selector values */
 	unsigned	service_statuses;
+	/* The service properties selector bitmask -- see host_props above. */
+	unsigned	service_props;
 	/* Name of service whose children should be returned if parentservice is
 		specified */
 	char *		parent_service_name;
@@ -228,21 +236,23 @@ typedef struct status_json_cgi_data_struct {
 extern json_object *json_status_hostcount(unsigned, int, host *, int, host *, 
 		hostgroup *, int, contact *, int, time_t, time_t, contactgroup *,
 		timeperiod *, timeperiod *, command *, command *);
-extern json_object *json_status_hostlist(unsigned, int, int, int, int, host *, 
-		int, host *, hostgroup *, int, contact *, int, time_t, time_t,
+extern json_object *json_status_hostlist(unsigned, int, int, int, int, host *,
+		int, host *, hostgroup *, int, unsigned, contact *, int, time_t, time_t,
 		contactgroup *, timeperiod *, timeperiod *, command *, command *);
 extern json_object *json_status_host(unsigned, host *, hoststatus *);
-extern void json_status_host_details(json_object *, unsigned, host *, 
+extern void json_status_host_details(json_object *, unsigned, host *,
 		hoststatus *);
+extern int passes_host_properties_filter(hoststatus *, unsigned);
+extern int passes_service_properties_filter(servicestatus *, unsigned);
 
-extern json_object *json_status_servicecount(unsigned, host *, int, host *, 
-		int, host *, hostgroup *, servicegroup *, int, int, contact *, int, 
+extern json_object *json_status_servicecount(unsigned, host *, int, host *,
+		int, host *, hostgroup *, servicegroup *, int, int, contact *, int,
 		time_t, time_t, char *, char *, char *, contactgroup *, timeperiod *,
 		timeperiod *, command *, command *);
-extern json_object *json_status_servicelist(unsigned, int, int, int, host *, 
-		int, host *, int, host *, hostgroup *, servicegroup *, int, int, 
-		contact *, int, time_t, time_t, char *, char *, char *, contactgroup *,
-		timeperiod *, timeperiod *, command *, command *);
+extern json_object *json_status_servicelist(unsigned, int, int, int, host *,
+		int, host *, int, host *, hostgroup *, servicegroup *, int, int,
+		unsigned, contact *, int, time_t, time_t, char *, char *, char *,
+		contactgroup *, timeperiod *, timeperiod *, command *, command *);
 extern json_object *json_status_service(unsigned, service *, servicestatus *);
 extern void json_status_service_details(json_object *, unsigned, service *,
 		servicestatus *);

@@ -246,11 +246,37 @@ export interface HostStatusResult {
  * function added later, e.g. fetchComments/fetchStateChangeList) until
  * this fix.
  */
-export async function fetchHostStatusDetails(): Promise<HostStatusResult> {
+/**
+ * hoststatus=/hostprops= mirror cgi/status.c's hoststatustypes=/hostprops=
+ * bitmask filters (see include/cgiutils.h's HOST_* property bits and
+ * cgi/jsonutils.c's svm_host_props), applied server-side by
+ * cgi/statusjson.c's json_status_hostlist()/passes_host_properties_filter()
+ * so a "Problems"/"Unhandled Problems" fetch only transfers the handful of
+ * hosts that actually match instead of every host on the install --
+ * reported from a real large-scale install as ~5MB for a query that (once
+ * filtered) usually returns a few hundred bytes.
+ */
+function hostFilterParams(filter: ProblemFilterMode): Record<string, string> {
+	if (filter === 'problems') {
+		return { hoststatus: 'down unreachable' };
+	}
+	if (filter === 'unhandled') {
+		return { hoststatus: 'down unreachable', hostprops: 'no_scheduled_downtime unacknowledged checks_enabled' };
+	}
+	return {};
+}
+
+/**
+ * `filter` narrows the request server-side (see hostFilterParams) -- pass
+ * 'all' (the default) when the full host list is genuinely needed (e.g.
+ * services.ts's cross-reference use, or schedulingqueue.ts).
+ */
+export async function fetchHostStatusDetails(filter: ProblemFilterMode = 'all'): Promise<HostStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<HostStatusListData>('statusjson.cgi', {
 		query: 'hostlist',
 		details: 'true',
 		formatoptions: 'enumerate',
+		...hostFilterParams(filter),
 	});
 	return { queryTime, hosts: data.hostlist ?? {} };
 }
@@ -313,12 +339,33 @@ export interface ServiceStatusResult {
 	services: ServiceStatusEntry[];
 }
 
+/**
+ * servicestatus=/serviceprops= mirror hostFilterParams above, for
+ * cgi/statusjson.c's json_status_servicelist(). "unhandled" also passes
+ * hoststatus=up pending -- matching cgi/status.c's own "Unhandled" link,
+ * this excludes problem services on a host that's itself down/unreachable
+ * (noise from the outage, not independently actionable). That specific
+ * cross-check only started working server-side once
+ * json_status_service_passes_host_selection() was fixed to actually apply
+ * host_statuses at all (it accepted the parameter but never checked it).
+ */
+function serviceFilterParams(filter: ProblemFilterMode): Record<string, string> {
+	if (filter === 'problems') {
+		return { servicestatus: 'warning unknown critical' };
+	}
+	if (filter === 'unhandled') {
+		return { servicestatus: 'warning unknown critical', serviceprops: 'no_scheduled_downtime unacknowledged', hoststatus: 'up pending' };
+	}
+	return {};
+}
+
 /** See fetchHostStatusDetails's comment -- same bug, same fix, for "status". */
-export async function fetchServiceStatusDetails(): Promise<ServiceStatusResult> {
+export async function fetchServiceStatusDetails(filter: ProblemFilterMode = 'all'): Promise<ServiceStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<ServiceStatusListData>('statusjson.cgi', {
 		query: 'servicelist',
 		details: 'true',
 		formatoptions: 'enumerate',
+		...serviceFilterParams(filter),
 	});
 	const services: ServiceStatusEntry[] = [];
 	for (const [hostName, byDescription] of Object.entries(data.servicelist ?? {})) {
@@ -474,11 +521,61 @@ export async function fetchDowntimes(): Promise<DowntimeEntry[]> {
  * Shared by hosts.ts/services.ts: mirrors cgi/status.c's
  * hoststatustypes/servicestatustypes/hostprops/serviceprops query-string
  * filters used by side.html.in's "Hosts"/"Services" nav links and their
- * "(Unhandled)" counterparts, applied client-side against already-fetched
- * data instead of new query params -- see each file's matchesProblemFilter
- * for the exact bitmask-equivalent logic.
+ * "(Unhandled)" counterparts. Applied server-side now (see
+ * hostFilterParams/serviceFilterParams above) -- each file's
+ * matchesProblemFilter still re-checks the same criteria client-side as a
+ * cheap safety net against the two ever drifting apart, not as the primary
+ * filter.
  */
 export type ProblemFilterMode = 'all' | 'problems' | 'unhandled';
+
+export interface HostCount {
+	up: number;
+	down: number;
+	unreachable: number;
+	pending: number;
+}
+
+interface HostCountData {
+	count: Partial<HostCount>;
+}
+
+/**
+ * statusjson.cgi?query=hostcount: a few bytes back instead of hostlist's
+ * full per-host detail, used for hosts.ts's "Host Status Totals" panel
+ * instead of computing it by scanning whatever (possibly Problems/
+ * Unhandled-filtered) set fetchHostStatusDetails() currently returned --
+ * the totals panel always needs the true breakdown across every host in
+ * the group scope, independent of the table's own filter.
+ */
+export async function fetchHostCount(hostgroup?: string): Promise<HostCount> {
+	const data = await fetchJson<HostCountData>('statusjson.cgi', hostgroup ? { query: 'hostcount', hostgroup } : { query: 'hostcount' });
+	return { up: data.count.up ?? 0, down: data.count.down ?? 0, unreachable: data.count.unreachable ?? 0, pending: data.count.pending ?? 0 };
+}
+
+export interface ServiceCount {
+	ok: number;
+	warning: number;
+	unknown: number;
+	critical: number;
+	pending: number;
+}
+
+interface ServiceCountData {
+	count: Partial<ServiceCount>;
+}
+
+/** See fetchHostCount -- same idea, for services.ts's "Service Status Totals". */
+export async function fetchServiceCount(servicegroup?: string): Promise<ServiceCount> {
+	const data = await fetchJson<ServiceCountData>('statusjson.cgi', servicegroup ? { query: 'servicecount', servicegroup } : { query: 'servicecount' });
+	return {
+		ok: data.count.ok ?? 0,
+		warning: data.count.warning ?? 0,
+		unknown: data.count.unknown ?? 0,
+		critical: data.count.critical ?? 0,
+		pending: data.count.pending ?? 0,
+	};
+}
 
 export function statusCgiHostUrl(hostName: string): string {
 	const url = new URL(cgiUrl('status.cgi'), window.location.href);

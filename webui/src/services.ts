@@ -2,6 +2,7 @@ import {
 	fetchServiceStatusDetails,
 	fetchServiceObjectDetails,
 	fetchServiceGroups,
+	fetchServiceCount,
 	fetchHostStatusDetails,
 	fetchHostObjectDetails,
 	extinfoHostUrl,
@@ -505,40 +506,35 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 
 	// Scoped by Service Group only, matching cgi/status.c's
 	// show_service_status_totals() -- unlike the table below, this box is
-	// NOT affected by the Problems/Unhandled Problems filter.
+	// NOT affected by the Problems/Unhandled Problems filter. Uses
+	// statusjson.cgi?query=servicecount (a handful of bytes) instead of
+	// computing this from currentServices, since that's now whatever the
+	// Problems/Unhandled filter narrowed the main fetch to, not the true
+	// breakdown across every service in scope. See hosts.ts's
+	// renderTotalsPanel for the identical rationale.
+	let totalsRequestId = 0;
 	function renderTotalsPanel(): void {
 		if (!totalsContainer) return;
-		const memberFilter = currentMemberFilter();
-		let ok = 0;
-		let warning = 0;
-		let unknown = 0;
-		let critical = 0;
-		let pending = 0;
-		for (const entry of currentServices) {
-			if (memberFilter && !memberFilter.has(serviceKey(entry.hostName, entry.description))) continue;
-			const status = entry.status.status;
-			if (status === 'ok') ok++;
-			else if (status === 'warning') warning++;
-			else if (status === 'unknown') unknown++;
-			else if (status === 'critical') critical++;
-			else pending++;
-		}
-		totalsContainer.innerHTML = '';
-		totalsContainer.appendChild(
-			renderStatusTotals(
-				'service',
-				'Service Status Totals',
-				[
-					{ label: 'Ok', count: ok, classSuffix: 'OK' },
-					{ label: 'Warning', count: warning, classSuffix: 'WARNING' },
-					{ label: 'Unknown', count: unknown, classSuffix: 'UNKNOWN' },
-					{ label: 'Critical', count: critical, classSuffix: 'CRITICAL' },
-					{ label: 'Pending', count: pending, classSuffix: 'PENDING' },
-				],
-				warning + unknown + critical,
-				ok + warning + unknown + critical + pending,
-			),
-		);
+		const requestId = ++totalsRequestId;
+		void fetchServiceCount(selectedGroup ?? undefined).then((count) => {
+			if (requestId !== totalsRequestId || !totalsContainer) return;
+			totalsContainer.innerHTML = '';
+			totalsContainer.appendChild(
+				renderStatusTotals(
+					'service',
+					'Service Status Totals',
+					[
+						{ label: 'Ok', count: count.ok, classSuffix: 'OK' },
+						{ label: 'Warning', count: count.warning, classSuffix: 'WARNING' },
+						{ label: 'Unknown', count: count.unknown, classSuffix: 'UNKNOWN' },
+						{ label: 'Critical', count: count.critical, classSuffix: 'CRITICAL' },
+						{ label: 'Pending', count: count.pending, classSuffix: 'PENDING' },
+					],
+					count.warning + count.unknown + count.critical,
+					count.ok + count.warning + count.unknown + count.critical + count.pending,
+				),
+			);
+		});
 	}
 
 	function currentlyDisplayedCount(): number {
@@ -624,14 +620,14 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			// the host object details used by the collapsed host-group cell.
 			if (initial) {
 				[statusResult, objects, groups, hostStatusResult, hostObjects] = await Promise.all([
-					fetchServiceStatusDetails(),
+					fetchServiceStatusDetails(problemFilter),
 					fetchServiceObjectDetails(),
 					fetchServiceGroups(),
 					fetchHostStatusDetails(),
 					fetchHostObjectDetails(),
 				]);
 			} else {
-				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(), fetchHostStatusDetails()]);
+				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(problemFilter), fetchHostStatusDetails()]);
 				objects = currentObjects;
 				groups = currentGroups;
 				hostObjects = currentHostObjects;
@@ -696,7 +692,10 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			problemSelect.value = problemFilter;
 			problemSelect.addEventListener('change', () => {
 				problemFilter = problemSelect!.value as ProblemFilterMode;
-				rerenderTable();
+				// Refetch (not just rerenderTable) so switching to
+				// Problems/Unhandled actually narrows the request server-side
+				// instead of re-filtering the already-fetched full dataset.
+				void load(false);
 			});
 			problemLabel.appendChild(problemSelect);
 			filterBar.appendChild(problemLabel);

@@ -2,6 +2,7 @@ import {
 	fetchHostStatusDetails,
 	fetchHostObjectDetails,
 	fetchHostGroups,
+	fetchHostCount,
 	extinfoHostUrl,
 	statusCgiHostUrl,
 	type HostStatusDetails,
@@ -380,36 +381,32 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 
 	// Scoped by Host Group only, matching cgi/status.c's show_host_status_totals()
 	// -- unlike the table below, this box is NOT affected by the
-	// Problems/Unhandled Problems filter.
+	// Problems/Unhandled Problems filter. Uses statusjson.cgi?query=hostcount
+	// (a handful of bytes) instead of computing this from currentHosts,
+	// since that's now whatever the Problems/Unhandled filter narrowed the
+	// main fetch to, not the true breakdown across every host in scope.
+	let totalsRequestId = 0;
 	function renderTotalsPanel(): void {
 		if (!totalsContainer) return;
-		const memberFilter = currentMemberFilter();
-		let up = 0;
-		let down = 0;
-		let unreachable = 0;
-		let pending = 0;
-		for (const [hostName, status] of Object.entries(currentHosts)) {
-			if (memberFilter && !memberFilter.has(hostName)) continue;
-			if (status.status === 'up') up++;
-			else if (status.status === 'down') down++;
-			else if (status.status === 'unreachable') unreachable++;
-			else pending++;
-		}
-		totalsContainer.innerHTML = '';
-		totalsContainer.appendChild(
-			renderStatusTotals(
-				'host',
-				'Host Status Totals',
-				[
-					{ label: 'Up', count: up, classSuffix: 'UP' },
-					{ label: 'Down', count: down, classSuffix: 'DOWN' },
-					{ label: 'Unreachable', count: unreachable, classSuffix: 'UNREACHABLE' },
-					{ label: 'Pending', count: pending, classSuffix: 'PENDING' },
-				],
-				down + unreachable,
-				up + down + unreachable + pending,
-			),
-		);
+		const requestId = ++totalsRequestId;
+		void fetchHostCount(selectedGroup ?? undefined).then((count) => {
+			if (requestId !== totalsRequestId || !totalsContainer) return;
+			totalsContainer.innerHTML = '';
+			totalsContainer.appendChild(
+				renderStatusTotals(
+					'host',
+					'Host Status Totals',
+					[
+						{ label: 'Up', count: count.up, classSuffix: 'UP' },
+						{ label: 'Down', count: count.down, classSuffix: 'DOWN' },
+						{ label: 'Unreachable', count: count.unreachable, classSuffix: 'UNREACHABLE' },
+						{ label: 'Pending', count: count.pending, classSuffix: 'PENDING' },
+					],
+					count.down + count.unreachable,
+					count.up + count.down + count.unreachable + count.pending,
+				),
+			);
+		});
 	}
 
 	function currentlyDisplayedCount(): number {
@@ -484,12 +481,12 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			// need to refetch them on every 90s auto-refresh tick.
 			if (initial) {
 				[statusResult, objects, groups] = await Promise.all([
-					fetchHostStatusDetails(),
+					fetchHostStatusDetails(problemFilter),
 					fetchHostObjectDetails(),
 					fetchHostGroups(),
 				]);
 			} else {
-				statusResult = await fetchHostStatusDetails();
+				statusResult = await fetchHostStatusDetails(problemFilter);
 				objects = currentObjects;
 				groups = currentGroups;
 			}
@@ -552,7 +549,10 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			problemSelect.value = problemFilter;
 			problemSelect.addEventListener('change', () => {
 				problemFilter = problemSelect!.value as ProblemFilterMode;
-				rerenderTable();
+				// Refetch (not just rerenderTable) so switching to
+				// Problems/Unhandled actually narrows the request server-side
+				// instead of re-filtering the already-fetched full dataset.
+				void load(false);
 			});
 			problemLabel.appendChild(problemSelect);
 			filterBar.appendChild(problemLabel);

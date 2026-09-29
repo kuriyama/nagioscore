@@ -13,7 +13,7 @@
 	     hand alongside that release number to bust caches -- a stale copy
 	     of either was reported as looking like an old release's fixes
 	     hadn't taken effect. See README.md for the release checklist. -->
-	<link rel="stylesheet" type="text/css" href="stylesheets/nagios-app.css?kuriyama41">
+	<link rel="stylesheet" type="text/css" href="stylesheets/nagios-app.css?kuriyama42">
 
 	<script LANGUAGE="javascript">
 		// Other CGI-rendered pages (status.cgi, extinfo.cgi, cmd.cgi's own
@@ -33,6 +33,6 @@
 	<div id="nav"></div>
 	<div id="dashboard"></div>
 
-	<script type="text/javascript" src="js/nagios-app.js?kuriyama41"></script>
+	<script type="text/javascript" src="js/nagios-app.js?kuriyama42"></script>
 </body>
 </html>

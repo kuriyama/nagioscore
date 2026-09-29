@@ -36,6 +36,10 @@ typedef struct object_json_cgi_data_struct {
 	int			count;
 	/* Return details for each entity in a list request */
 	int			details;
+	/* Space-separated list of field names to restrict host/service detail
+		output to (NULL means no restriction -- return every field, same
+		as before this option existed). See field_wanted(). */
+	char *		fields;
 	/* strftime format string for time_t values */
 	char *		strftime_format;
 	/* Name of host whose children should be returned if parenthost is 
@@ -212,11 +216,21 @@ extern json_object * json_object_custom_variables(struct customvariablesmember *
 extern json_object *json_object_hostcount(int, host *, int, host *, hostgroup *,
 		contact *, contactgroup *, timeperiod *, timeperiod *, command *,
 		command *);
-extern json_object *json_object_hostlist(unsigned, int, int, int, int, host *, 
+extern json_object *json_object_hostlist(unsigned, int, int, int, int, host *,
 		int, host *, hostgroup *, contact *, contactgroup *, timeperiod *,
-		timeperiod *, command *, command *);
-extern json_object *json_object_host(unsigned, host *);
-extern void json_object_host_details(json_object *, unsigned, host *);
+		timeperiod *, command *, command *, char *);
+extern json_object *json_object_host(unsigned, host *, char *);
+extern void json_object_host_details(json_object *, unsigned, host *, char *);
+
+/* Returns TRUE if `fields` is NULL (no restriction -- want everything) or
+	`name` appears as one of its space-separated tokens. Used by
+	json_object_host_details()/json_object_service_details() to skip
+	building (percent-escaping, sub-array walking, etc.) fields the caller
+	never asked for -- on a large install, "objectjson.cgi?query=
+	servicelist&details=true" dumps ~80 fields per service whether or not
+	the caller reads them; the webui, for example, only ever reads
+	notes_url/action_url/icon_image. See cgi/objectjson.c's field_wanted(). */
+extern int field_wanted(const char *fields, const char *name);
 
 extern json_object *json_object_hostgroupcount(unsigned, host *);
 extern json_object *json_object_hostgrouplist(unsigned, int, int, int, host *);
@@ -226,12 +240,12 @@ extern void json_object_hostgroup_details(json_object *, unsigned, hostgroup *);
 extern json_object *json_object_servicecount(host *, int, host *, int, host *, 
 		hostgroup *, servicegroup *, contact *, char *, char *, char *,
 		contactgroup *, timeperiod *, timeperiod *, command *, command *);
-extern json_object *json_object_servicelist(unsigned, int, int, int, host *, 
-		int, host *, int, host *, hostgroup *, servicegroup *, contact *, 
+extern json_object *json_object_servicelist(unsigned, int, int, int, host *,
+		int, host *, int, host *, hostgroup *, servicegroup *, contact *,
 		char *, char *, char *, contactgroup *, timeperiod *, timeperiod *,
-		command *, command *);
-extern json_object *json_object_service(unsigned, service *);
-extern void json_object_service_details(json_object *, unsigned, service *);
+		command *, command *, char *);
+extern json_object *json_object_service(unsigned, service *, char *);
+extern void json_object_service_details(json_object *, unsigned, service *, char *);
 
 extern json_object *json_object_servicegroupcount(service *);
 extern json_object *json_object_servicegrouplist(unsigned, int, int, int, 

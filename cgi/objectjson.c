@@ -259,6 +259,16 @@ option_help object_json_help[] = {
 		NULL
 		},
 	{ 
+		"fields",
+		"Fields",
+		"list",
+		{ NULL },
+		{ "host", "hostlist", "service", "servicelist", NULL },
+		NULL,
+		"Restricts the per-object detail output to the given space-separated field names (e.g. 'notes_url action_url icon_image'). If not specified, every field is returned, same as before this option existed.",
+		NULL
+		},
+	{ 
 		"hostname",
 		"Host Name",
 		"nagios:objectjson/hostlist",
@@ -757,13 +767,13 @@ int main(void) {
 				last_object_cache_update, &current_authdata,
 				RESULT_SUCCESS, ""));
 		json_object_append_object(json_root, "data", 
-				json_object_hostlist(cgi_data.format_options, cgi_data.start, 
-				cgi_data.count, cgi_data.details, cgi_data.use_parent_host, 
-				cgi_data.parent_host, cgi_data.use_child_host, 
+				json_object_hostlist(cgi_data.format_options, cgi_data.start,
+				cgi_data.count, cgi_data.details, cgi_data.use_parent_host,
+				cgi_data.parent_host, cgi_data.use_child_host,
 				cgi_data.child_host, cgi_data.hostgroup, cgi_data.contact,
 				cgi_data.contactgroup, cgi_data.check_timeperiod,
 				cgi_data.host_notification_timeperiod, cgi_data.check_command,
-				cgi_data.event_handler));
+				cgi_data.event_handler, cgi_data.fields));
 		break;
 	case OBJECT_QUERY_HOST:
 		json_object_append_object(json_root, "result", 
@@ -773,7 +783,8 @@ int main(void) {
 				last_object_cache_update, &current_authdata,
 				RESULT_SUCCESS, ""));
 		json_object_append_object(json_root, "data", 
-				json_object_host(cgi_data.format_options, cgi_data.host));
+				json_object_host(cgi_data.format_options, cgi_data.host,
+				cgi_data.fields));
 		break;
 	case OBJECT_QUERY_HOSTGROUPCOUNT:
 		json_object_append_object(json_root, "result", 
@@ -844,17 +855,19 @@ int main(void) {
 				cgi_data.child_service_name, cgi_data.contactgroup,
 				cgi_data.check_timeperiod,
 				cgi_data.service_notification_timeperiod,
-				cgi_data.check_command, cgi_data.event_handler));
+				cgi_data.check_command, cgi_data.event_handler,
+				cgi_data.fields));
 		break;
 	case OBJECT_QUERY_SERVICE:
-		json_object_append_object(json_root, "result", 
-				json_result(query_time, THISCGI, 
-				svm_get_string_from_value(cgi_data.query, valid_queries), 
+		json_object_append_object(json_root, "result",
+				json_result(query_time, THISCGI,
+				svm_get_string_from_value(cgi_data.query, valid_queries),
 				get_query_status(query_status, cgi_data.query),
 				last_object_cache_update, &current_authdata,
 				RESULT_SUCCESS, ""));
-		json_object_append_object(json_root, "data", 
-				json_object_service(cgi_data.format_options, cgi_data.service));
+		json_object_append_object(json_root, "data",
+				json_object_service(cgi_data.format_options, cgi_data.service,
+				cgi_data.fields));
 		break;
 	case OBJECT_QUERY_SERVICEGROUPCOUNT:
 		json_object_append_object(json_root, "result", 
@@ -1194,6 +1207,7 @@ void init_cgi_data(object_json_cgi_data *cgi_data) {
 	cgi_data->start = 0;
 	cgi_data->count = 0;
 	cgi_data->details = 0;
+	cgi_data->fields = NULL;
 	cgi_data->strftime_format = NULL;
 	cgi_data->parent_host_name = NULL;
 	cgi_data->use_parent_host = 0;
@@ -1721,6 +1735,18 @@ int process_cgivars(json_object *json_root, object_json_cgi_data *cgi_data,
 					get_query_status(query_status, cgi_data->query),
 					json_root, query_time, authinfo, variables[x],
 					variables[x+1], &(cgi_data->details))) != RESULT_SUCCESS) {
+				break;
+				}
+			x++;
+			}
+
+		else if(!strcmp(variables[x], "fields")) {
+			if((result = parse_string_cgivar(THISCGI,
+					svm_get_string_from_value(cgi_data->query, valid_queries),
+					get_query_status(query_status, cgi_data->query),
+					json_root, query_time, authinfo, variables[x],
+					variables[x+1], &(cgi_data->fields)))
+					!= RESULT_SUCCESS) {
 				break;
 				}
 			x++;
@@ -2608,12 +2634,42 @@ json_object * json_object_hostcount(int use_parent_host, host *parent_host,
 	return json_data;
 	}
 
+/* See include/objectjson.h's declaration for the rationale. */
+int field_wanted(const char *fields, const char *name) {
+	const char *p = fields;
+	size_t name_len;
+
+	if(NULL == fields) {
+		return TRUE;
+		}
+
+	name_len = strlen(name);
+	while(*p != '\0') {
+		const char *start;
+		while(*p == ' ') {
+			p++;
+			}
+		if(*p == '\0') {
+			break;
+			}
+		start = p;
+		while(*p != '\0' && *p != ' ') {
+			p++;
+			}
+		if(((size_t)(p - start) == name_len) && !strncmp(start, name, name_len)) {
+			return TRUE;
+			}
+		}
+
+	return FALSE;
+	}
+
 json_object * json_object_hostlist(unsigned format_options, int start,
 		int count, int details, int use_parent_host, host *parent_host,
 		int use_child_host, host *child_host, hostgroup *temp_hostgroup,
 		contact *temp_contact, contactgroup *temp_contactgroup,
 		timeperiod *check_timeperiod, timeperiod *notification_timeperiod,
-		command *check_command, command *event_handler) {
+		command *check_command, command *event_handler, char *fields) {
 
 	json_object *json_data;
 	json_object *json_hostlist_object = NULL;
@@ -2650,8 +2706,8 @@ json_object * json_object_hostlist(unsigned format_options, int start,
 		if( passes_start_and_count_limits(start, count, current, counted)) {
 			if( details > 0) {
 				json_host_details = json_new_object();
-				json_object_host_details(json_host_details, format_options, 
-						temp_host);
+				json_object_host_details(json_host_details, format_options,
+						temp_host, fields);
 				json_object_append_object(json_hostlist_object, temp_host->name, 
 						json_host_details);
 				}
@@ -2674,21 +2730,22 @@ json_object * json_object_hostlist(unsigned format_options, int start,
 	return json_data;
 	}
 
-json_object *json_object_host(unsigned format_options, host *temp_host) {
+json_object *json_object_host(unsigned format_options, host *temp_host,
+		char *fields) {
 
 	json_object *json_host = json_new_object();
 	json_object *json_details = json_new_object();
 
 	json_object_append_string(json_details, "name", &percent_escapes,
 			temp_host->name);
-	json_object_host_details(json_details, format_options, temp_host);
+	json_object_host_details(json_details, format_options, temp_host, fields);
 	json_object_append_object(json_host, "host", json_details);
 
 	return json_host;
 }
 
-void json_object_host_details(json_object *json_details, unsigned format_options, 
-		host *temp_host) {
+void json_object_host_details(json_object *json_details, unsigned format_options,
+		host *temp_host, char *fields) {
 
 	json_array *json_parent_hosts;
 	json_array *json_child_hosts;
@@ -2704,269 +2761,371 @@ void json_object_host_details(json_object *json_details, unsigned format_options
 	contact *temp_contact;
 #endif
 
-	json_object_append_string(json_details, "name", &percent_escapes,
-			temp_host->name);
-	json_object_append_string(json_details, "display_name", &percent_escapes,
-			temp_host->display_name);
-	json_object_append_string(json_details, "alias", &percent_escapes,
-			temp_host->alias);
-	json_object_append_string(json_details, "address", &percent_escapes,
-			temp_host->address);
-
-	json_parent_hosts = json_new_array();
-	for(temp_hostsmember = temp_host->parent_hosts; temp_hostsmember != NULL; 
-			temp_hostsmember = temp_hostsmember->next) {
-		json_array_append_string(json_parent_hosts, &percent_escapes,
-				temp_hostsmember->host_name);
+	if(field_wanted(fields, "name")) {
+		json_object_append_string(json_details, "name", &percent_escapes,
+				temp_host->name);
 		}
-	json_object_append_array(json_details, "parent_hosts", json_parent_hosts);
-
-	json_child_hosts = json_new_array();
-	for(temp_hostsmember = temp_host->child_hosts; temp_hostsmember != NULL; 
-			temp_hostsmember = temp_hostsmember->next) {
-		json_array_append_string(json_child_hosts, &percent_escapes,
-				temp_hostsmember->host_name);
+	if(field_wanted(fields, "display_name")) {
+		json_object_append_string(json_details, "display_name", &percent_escapes,
+				temp_host->display_name);
 		}
-	json_object_append_array(json_details, "child_hosts", json_child_hosts);
-
-	json_services = json_new_array();
-	for(temp_servicesmember = temp_host->services; temp_servicesmember != NULL; 
-			temp_servicesmember = temp_servicesmember->next) {
-		json_array_append_string(json_services, &percent_escapes,
-				temp_servicesmember->service_description);
+	if(field_wanted(fields, "alias")) {
+		json_object_append_string(json_details, "alias", &percent_escapes,
+				temp_host->alias);
 		}
-	json_object_append_array(json_details, "services", json_services);
-
-#ifdef JSON_NAGIOS_4X
-	json_object_append_string(json_details, "check_command", &percent_escapes,
-			temp_host->check_command);
-#else
-	json_object_append_string(json_details, "host_check_command", 
-			&percent_escapes, temp_host->host_check_command);
-#endif
-
-	json_enumeration(json_details, format_options, "initial_state", 
-			temp_host->initial_state, svm_host_states);
-	json_object_append_real(json_details, "check_interval", 
-			temp_host->check_interval);
-	json_object_append_real(json_details, "retry_interval", 
-			temp_host->retry_interval);
-	json_object_append_integer(json_details, "max_attempts", 
-			temp_host->max_attempts);
-	json_object_append_string(json_details, "event_handler", &percent_escapes,
-			temp_host->event_handler);
-
-	json_contactgroups = json_new_array();
-	for(temp_contact_groupsmember = temp_host->contact_groups; 
-			temp_contact_groupsmember != NULL; 
-			temp_contact_groupsmember = temp_contact_groupsmember->next) {
-		json_array_append_string(json_contactgroups, &percent_escapes,
-				temp_contact_groupsmember->group_name);
+	if(field_wanted(fields, "address")) {
+		json_object_append_string(json_details, "address", &percent_escapes,
+				temp_host->address);
 		}
-	json_object_append_array(json_details, "contact_groups", json_contactgroups);
 
-	json_contacts = json_new_array();
-#ifdef NSCORE
-	for(temp_contactsmember = temp_host->contacts; 
-			temp_contactsmember != NULL; 
-			temp_contactsmember = temp_contactsmember->next) {
-		json_array_append_string(json_contacts, &percent_escapes,
-				temp_contactsmember->contact_name);
-		}
-#else
-	for(temp_contact = contact_list; temp_contact != NULL; 
-			temp_contact = temp_contact->next) {
-		if(TRUE == is_contact_for_host(temp_host, temp_contact)) {
-			json_array_append_string(json_contacts, &percent_escapes,
-					temp_contact->name);
+	if(field_wanted(fields, "parent_hosts")) {
+		json_parent_hosts = json_new_array();
+		for(temp_hostsmember = temp_host->parent_hosts; temp_hostsmember != NULL;
+				temp_hostsmember = temp_hostsmember->next) {
+			json_array_append_string(json_parent_hosts, &percent_escapes,
+					temp_hostsmember->host_name);
 			}
+		json_object_append_array(json_details, "parent_hosts", json_parent_hosts);
 		}
-#endif
-	json_object_append_array(json_details, "contacts", json_contacts);
 
-	json_object_append_real(json_details, "notification_interval", 
-			temp_host->notification_interval);
-	json_object_append_real(json_details, "first_notification_delay", 
-			temp_host->first_notification_delay);
+	if(field_wanted(fields, "child_hosts")) {
+		json_child_hosts = json_new_array();
+		for(temp_hostsmember = temp_host->child_hosts; temp_hostsmember != NULL;
+				temp_hostsmember = temp_hostsmember->next) {
+			json_array_append_string(json_child_hosts, &percent_escapes,
+					temp_hostsmember->host_name);
+			}
+		json_object_append_array(json_details, "child_hosts", json_child_hosts);
+		}
+
+	if(field_wanted(fields, "services")) {
+		json_services = json_new_array();
+		for(temp_servicesmember = temp_host->services; temp_servicesmember != NULL;
+				temp_servicesmember = temp_servicesmember->next) {
+			json_array_append_string(json_services, &percent_escapes,
+					temp_servicesmember->service_description);
+			}
+		json_object_append_array(json_details, "services", json_services);
+		}
+
+	if(field_wanted(fields, "check_command")) {
+#ifdef JSON_NAGIOS_4X
+		json_object_append_string(json_details, "check_command", &percent_escapes,
+				temp_host->check_command);
+#else
+		json_object_append_string(json_details, "host_check_command",
+				&percent_escapes, temp_host->host_check_command);
+#endif
+		}
+
+	if(field_wanted(fields, "initial_state")) {
+		json_enumeration(json_details, format_options, "initial_state",
+				temp_host->initial_state, svm_host_states);
+		}
+	if(field_wanted(fields, "check_interval")) {
+		json_object_append_real(json_details, "check_interval",
+				temp_host->check_interval);
+		}
+	if(field_wanted(fields, "retry_interval")) {
+		json_object_append_real(json_details, "retry_interval",
+				temp_host->retry_interval);
+		}
+	if(field_wanted(fields, "max_attempts")) {
+		json_object_append_integer(json_details, "max_attempts",
+				temp_host->max_attempts);
+		}
+	if(field_wanted(fields, "event_handler")) {
+		json_object_append_string(json_details, "event_handler", &percent_escapes,
+				temp_host->event_handler);
+		}
+
+	if(field_wanted(fields, "contact_groups")) {
+		json_contactgroups = json_new_array();
+		for(temp_contact_groupsmember = temp_host->contact_groups;
+				temp_contact_groupsmember != NULL;
+				temp_contact_groupsmember = temp_contact_groupsmember->next) {
+			json_array_append_string(json_contactgroups, &percent_escapes,
+					temp_contact_groupsmember->group_name);
+			}
+		json_object_append_array(json_details, "contact_groups", json_contactgroups);
+		}
+
+	if(field_wanted(fields, "contacts")) {
+		json_contacts = json_new_array();
+#ifdef NSCORE
+		for(temp_contactsmember = temp_host->contacts;
+				temp_contactsmember != NULL;
+				temp_contactsmember = temp_contactsmember->next) {
+			json_array_append_string(json_contacts, &percent_escapes,
+					temp_contactsmember->contact_name);
+			}
+#else
+		for(temp_contact = contact_list; temp_contact != NULL;
+				temp_contact = temp_contact->next) {
+			if(TRUE == is_contact_for_host(temp_host, temp_contact)) {
+				json_array_append_string(json_contacts, &percent_escapes,
+						temp_contact->name);
+				}
+			}
+#endif
+		json_object_append_array(json_details, "contacts", json_contacts);
+		}
+
+	if(field_wanted(fields, "notification_interval")) {
+		json_object_append_real(json_details, "notification_interval",
+				temp_host->notification_interval);
+		}
+	if(field_wanted(fields, "first_notification_delay")) {
+		json_object_append_real(json_details, "first_notification_delay",
+				temp_host->first_notification_delay);
+		}
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "notify_on_down", 
+		json_object_append_boolean(json_details, "notify_on_down",
 				flag_isset(temp_host->notification_options, OPT_DOWN));
-		json_object_append_boolean(json_details, "notify_on_unreachable", 
+		json_object_append_boolean(json_details, "notify_on_unreachable",
 				flag_isset(temp_host->notification_options, OPT_UNREACHABLE));
-		json_object_append_boolean(json_details, "notify_on_recovery", 
+		json_object_append_boolean(json_details, "notify_on_recovery",
 				flag_isset(temp_host->notification_options, OPT_RECOVERY));
-		json_object_append_boolean(json_details, "notify_on_flapping", 
+		json_object_append_boolean(json_details, "notify_on_flapping",
 				flag_isset(temp_host->notification_options, OPT_FLAPPING));
-		json_object_append_boolean(json_details, "notify_on_downtime", 
+		json_object_append_boolean(json_details, "notify_on_downtime",
 				flag_isset(temp_host->notification_options, OPT_DOWNTIME));
 		}
 	else {
 #endif
-		json_bitmask(json_details, format_options, "notifications_options",
-				temp_host->notification_options, svm_option_types);
+		if(field_wanted(fields, "notifications_options")) {
+			json_bitmask(json_details, format_options, "notifications_options",
+					temp_host->notification_options, svm_option_types);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "notify_on_down", 
+	json_object_append_boolean(json_details, "notify_on_down",
 			temp_host->notify_on_down);
-	json_object_append_boolean(json_details, "notify_on_unreachable", 
+	json_object_append_boolean(json_details, "notify_on_unreachable",
 			temp_host->notify_on_unreachable);
-	json_object_append_boolean(json_details, "notify_on_recovery", 
+	json_object_append_boolean(json_details, "notify_on_recovery",
 			temp_host->notify_on_recovery);
-	json_object_append_boolean(json_details, "notify_on_flapping", 
+	json_object_append_boolean(json_details, "notify_on_flapping",
 			temp_host->notify_on_flapping);
-	json_object_append_boolean(json_details, "notify_on_downtime", 
+	json_object_append_boolean(json_details, "notify_on_downtime",
 			temp_host->notify_on_downtime);
 #endif
-	json_object_append_string(json_details, "notification_period", 
-			&percent_escapes, temp_host->notification_period);
-	json_object_append_string(json_details, "check_period", &percent_escapes,
-			temp_host->check_period);
-	json_object_append_boolean(json_details, "flap_detection_enabled", 
-			temp_host->flap_detection_enabled);
-	json_object_append_real(json_details, "low_flap_threshold", 
-			temp_host->low_flap_threshold);
-	json_object_append_real(json_details, "high_flap_threshold", 
-			temp_host->high_flap_threshold);
+	if(field_wanted(fields, "notification_period")) {
+		json_object_append_string(json_details, "notification_period",
+				&percent_escapes, temp_host->notification_period);
+		}
+	if(field_wanted(fields, "check_period")) {
+		json_object_append_string(json_details, "check_period", &percent_escapes,
+				temp_host->check_period);
+		}
+	if(field_wanted(fields, "flap_detection_enabled")) {
+		json_object_append_boolean(json_details, "flap_detection_enabled",
+				temp_host->flap_detection_enabled);
+		}
+	if(field_wanted(fields, "low_flap_threshold")) {
+		json_object_append_real(json_details, "low_flap_threshold",
+				temp_host->low_flap_threshold);
+		}
+	if(field_wanted(fields, "high_flap_threshold")) {
+		json_object_append_real(json_details, "high_flap_threshold",
+				temp_host->high_flap_threshold);
+		}
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details "flap_detection_on_up", 
+		json_object_append_boolean(json_details "flap_detection_on_up",
 				flag_isset(temp_host->flap_detection_options, OPT_UP));
-		json_object_append_boolean(json_details "flap_detection_on_down", 
+		json_object_append_boolean(json_details "flap_detection_on_down",
 				flag_isset(temp_host->flap_detection_options, OPT_DOWN));
-		json_object_append_boolean(json_details "flap_detection_on_unreachable", 
+		json_object_append_boolean(json_details "flap_detection_on_unreachable",
 				flag_isset(temp_host->flap_detection_options, OPT_UNREACHABLE));
 		}
 	else {
 #endif
-		json_bitmask(json_details, format_options, "flap_detection_options",
-				temp_host->flap_detection_options, svm_option_types);
+		if(field_wanted(fields, "flap_detection_options")) {
+			json_bitmask(json_details, format_options, "flap_detection_options",
+					temp_host->flap_detection_options, svm_option_types);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "flap_detection_on_up", 
+	json_object_append_boolean(json_details, "flap_detection_on_up",
 			temp_host->flap_detection_on_up);
-	json_object_append_boolean(json_details, "flap_detection_on_down", 
+	json_object_append_boolean(json_details, "flap_detection_on_down",
 			temp_host->flap_detection_on_down);
-	json_object_append_boolean(json_details, "flap_detection_on_unreachable", 
+	json_object_append_boolean(json_details, "flap_detection_on_unreachable",
 			temp_host->flap_detection_on_unreachable);
 #endif
 
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "stalk_on_up", 
+		json_object_append_boolean(json_details, "stalk_on_up",
 				flag_isset(temp_host->stalking_options, OPT_UP));
-		json_object_append_boolean(json_details, "stalk_on_down", 
+		json_object_append_boolean(json_details, "stalk_on_down",
 				flag_isset(temp_host->stalking_options, OPT_DOWN));
-		json_object_append_boolean(json_details, "stalk_on_unreachable", 
+		json_object_append_boolean(json_details, "stalk_on_unreachable",
 				flag_isset(temp_host->stalking_options, OPT_UNREACHABLE));
 		}
 	else {
 #endif
-		json_bitmask(json_details, format_options, "stalking_options",
-				temp_host->stalking_options, svm_option_types);
+		if(field_wanted(fields, "stalking_options")) {
+			json_bitmask(json_details, format_options, "stalking_options",
+					temp_host->stalking_options, svm_option_types);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "stalk_on_up", 
+	json_object_append_boolean(json_details, "stalk_on_up",
 			temp_host->stalk_on_up);
-	json_object_append_boolean(json_details, "stalk_on_down", 
+	json_object_append_boolean(json_details, "stalk_on_down",
 			temp_host->stalk_on_down);
-	json_object_append_boolean(json_details, "stalk_on_unreachable", 
+	json_object_append_boolean(json_details, "stalk_on_unreachable",
 			temp_host->stalk_on_unreachable);
 #endif
 
-	json_object_append_boolean(json_details, "check_freshness", 
-			temp_host->check_freshness);
-	json_object_append_integer(json_details, "freshness_threshold", 
-			temp_host->freshness_threshold);
-	json_object_append_boolean(json_details, "process_performance_data", 
-			temp_host->process_performance_data);
-	json_object_append_boolean(json_details, "checks_enabled", 
-			temp_host->checks_enabled);
+	if(field_wanted(fields, "check_freshness")) {
+		json_object_append_boolean(json_details, "check_freshness",
+				temp_host->check_freshness);
+		}
+	if(field_wanted(fields, "freshness_threshold")) {
+		json_object_append_integer(json_details, "freshness_threshold",
+				temp_host->freshness_threshold);
+		}
+	if(field_wanted(fields, "process_performance_data")) {
+		json_object_append_boolean(json_details, "process_performance_data",
+				temp_host->process_performance_data);
+		}
+	if(field_wanted(fields, "checks_enabled")) {
+		json_object_append_boolean(json_details, "checks_enabled",
+				temp_host->checks_enabled);
+		}
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "accept_passive_host_checks", 
+		json_object_append_boolean(json_details, "accept_passive_host_checks",
 				temp_host->accept_passive_checks);
 		}
 	else {
 #endif
-		json_object_append_boolean(json_details, "accept_passive_checks", 
-				temp_host->accept_passive_checks);
+		if(field_wanted(fields, "accept_passive_checks")) {
+			json_object_append_boolean(json_details, "accept_passive_checks",
+					temp_host->accept_passive_checks);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "accept_passive_host_checks", 
+	json_object_append_boolean(json_details, "accept_passive_host_checks",
 			temp_host->accept_passive_host_checks);
 #endif
-	json_object_append_boolean(json_details, "event_handler_enabled", 
-			temp_host->event_handler_enabled);
-	json_object_append_boolean(json_details, "retain_status_information", 
-			temp_host->retain_status_information);
-	json_object_append_boolean(json_details, "retain_nonstatus_information", 
-			temp_host->retain_nonstatus_information);
+	if(field_wanted(fields, "event_handler_enabled")) {
+		json_object_append_boolean(json_details, "event_handler_enabled",
+				temp_host->event_handler_enabled);
+		}
+	if(field_wanted(fields, "retain_status_information")) {
+		json_object_append_boolean(json_details, "retain_status_information",
+				temp_host->retain_status_information);
+		}
+	if(field_wanted(fields, "retain_nonstatus_information")) {
+		json_object_append_boolean(json_details, "retain_nonstatus_information",
+				temp_host->retain_nonstatus_information);
+		}
 #ifndef JSON_NAGIOS_4X
-	json_object_append_boolean(json_details, "failure_prediction_enabled", 
+	json_object_append_boolean(json_details, "failure_prediction_enabled",
 			temp_host->failure_prediction_enabled);
-	json_object_append_string(json_details, "failure_prediction_options", 
+	json_object_append_string(json_details, "failure_prediction_options",
 			NULL, temp_host->failure_prediction_options);
 #endif
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "obsess_over_host", 
+		json_object_append_boolean(json_details, "obsess_over_host",
 				temp_host->obsess);
 		}
 	else {
 #endif
-		json_object_append_boolean(json_details, "obsess", temp_host->obsess);
+		if(field_wanted(fields, "obsess")) {
+			json_object_append_boolean(json_details, "obsess", temp_host->obsess);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "obsess_over_host", 
+	json_object_append_boolean(json_details, "obsess_over_host",
 			temp_host->obsess_over_host);
 #endif
 #ifdef JSON_NAGIOS_4X
-	json_object_append_integer(json_details, "hourly_value", 
-			temp_host->hourly_value);
+	if(field_wanted(fields, "hourly_value")) {
+		json_object_append_integer(json_details, "hourly_value",
+				temp_host->hourly_value);
+		}
 #endif
-	json_object_append_string(json_details, "notes", &percent_escapes,
-			temp_host->notes);
-	json_object_append_string(json_details, "notes_url", &percent_escapes,
-			temp_host->notes_url);
-	json_object_append_string(json_details, "action_url", &percent_escapes,
-			temp_host->action_url);
-	json_object_append_string(json_details, "icon_image", &percent_escapes,
-			temp_host->icon_image);
-	json_object_append_string(json_details, "icon_image_alt", &percent_escapes,
-			temp_host->icon_image_alt);
-	json_object_append_string(json_details, "vrml_image", &percent_escapes,
-			temp_host->vrml_image);
-	json_object_append_string(json_details, "statusmap_image", &percent_escapes,
-			temp_host->statusmap_image);
-	json_object_append_boolean(json_details, "have_2d_coords", 
-			temp_host->have_2d_coords);
-	json_object_append_integer(json_details, "x_2d", temp_host->x_2d);
-	json_object_append_integer(json_details, "y_2d", temp_host->y_2d);
-	json_object_append_boolean(json_details, "have_3d_coords", 
-			temp_host->have_3d_coords);
-	json_object_append_real(json_details, "x_3d", temp_host->x_3d);
-	json_object_append_real(json_details, "y_3d", temp_host->y_3d);
-	json_object_append_real(json_details, "z_3d", temp_host->z_3d);
-	json_object_append_boolean(json_details, "should_be_drawn", 
-			temp_host->should_be_drawn);
-	json_object_append_object(json_details, "custom_variables", 
-			json_object_custom_variables(temp_host->custom_variables));
+	if(field_wanted(fields, "notes")) {
+		json_object_append_string(json_details, "notes", &percent_escapes,
+				temp_host->notes);
+		}
+	if(field_wanted(fields, "notes_url")) {
+		json_object_append_string(json_details, "notes_url", &percent_escapes,
+				temp_host->notes_url);
+		}
+	if(field_wanted(fields, "action_url")) {
+		json_object_append_string(json_details, "action_url", &percent_escapes,
+				temp_host->action_url);
+		}
+	if(field_wanted(fields, "icon_image")) {
+		json_object_append_string(json_details, "icon_image", &percent_escapes,
+				temp_host->icon_image);
+		}
+	if(field_wanted(fields, "icon_image_alt")) {
+		json_object_append_string(json_details, "icon_image_alt", &percent_escapes,
+				temp_host->icon_image_alt);
+		}
+	if(field_wanted(fields, "vrml_image")) {
+		json_object_append_string(json_details, "vrml_image", &percent_escapes,
+				temp_host->vrml_image);
+		}
+	if(field_wanted(fields, "statusmap_image")) {
+		json_object_append_string(json_details, "statusmap_image", &percent_escapes,
+				temp_host->statusmap_image);
+		}
+	if(field_wanted(fields, "have_2d_coords")) {
+		json_object_append_boolean(json_details, "have_2d_coords",
+				temp_host->have_2d_coords);
+		}
+	if(field_wanted(fields, "x_2d")) {
+		json_object_append_integer(json_details, "x_2d", temp_host->x_2d);
+		}
+	if(field_wanted(fields, "y_2d")) {
+		json_object_append_integer(json_details, "y_2d", temp_host->y_2d);
+		}
+	if(field_wanted(fields, "have_3d_coords")) {
+		json_object_append_boolean(json_details, "have_3d_coords",
+				temp_host->have_3d_coords);
+		}
+	if(field_wanted(fields, "x_3d")) {
+		json_object_append_real(json_details, "x_3d", temp_host->x_3d);
+		}
+	if(field_wanted(fields, "y_3d")) {
+		json_object_append_real(json_details, "y_3d", temp_host->y_3d);
+		}
+	if(field_wanted(fields, "z_3d")) {
+		json_object_append_real(json_details, "z_3d", temp_host->z_3d);
+		}
+	if(field_wanted(fields, "should_be_drawn")) {
+		json_object_append_boolean(json_details, "should_be_drawn",
+				temp_host->should_be_drawn);
+		}
+	if(field_wanted(fields, "custom_variables")) {
+		json_object_append_object(json_details, "custom_variables",
+				json_object_custom_variables(temp_host->custom_variables));
+		}
 	}
 
 int json_object_hostgroup_passes_selection(hostgroup *temp_hostgroup, 
@@ -3498,7 +3657,7 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 		char *parent_service_name, char *child_service_name,
 		contactgroup *temp_contactgroup, timeperiod *check_timeperiod,
 		timeperiod *notification_timeperiod, command *check_command,
-		command *event_handler) {
+		command *event_handler, char *fields) {
 
 	json_object *json_data;
 	json_object *json_hostlist;
@@ -3570,8 +3729,8 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 			if( passes_start_and_count_limits(start, count, current, counted)) {
 				if( details > 0) {
 					json_service_details = json_new_object();
-					json_object_service_details(json_service_details, 
-							format_options, temp_service);
+					json_object_service_details(json_service_details,
+							format_options, temp_service, fields);
 					asprintf(&buf, "%s", 
 							temp_service->description);
 					json_object_append_object(json_servicelist_object, buf, 
@@ -3605,7 +3764,8 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 	return json_data;
 	}
 
-json_object *json_object_service(unsigned format_options, service *temp_service) {
+json_object *json_object_service(unsigned format_options, service *temp_service,
+		char *fields) {
 
 	json_object *json_service = json_new_object();
 	json_object *json_details = json_new_object();
@@ -3618,14 +3778,14 @@ json_object *json_object_service(unsigned format_options, service *temp_service)
 	json_object_append_string(json_details, "description", &percent_escapes,
 			temp_service->description);
  */
-	json_object_service_details(json_details, format_options, temp_service);
+	json_object_service_details(json_details, format_options, temp_service, fields);
 	json_object_append_object(json_service, "service", json_details);
 
 	return json_service;
 }
 
-void json_object_service_details(json_object *json_details, 
-		unsigned format_options, service *temp_service) {
+void json_object_service_details(json_object *json_details,
+		unsigned format_options, service *temp_service, char *fields) {
 
 	json_array *json_contactgroups;
 	json_array *json_contacts;
@@ -3643,12 +3803,19 @@ void json_object_service_details(json_object *json_details,
 	json_array *json_child_services;
 #endif
 
-	json_object_append_string(json_details, "host_name", &percent_escapes,
-			temp_service->host_name);
-	json_object_append_string(json_details, "description", &percent_escapes,
-			temp_service->description);
-	json_object_append_string(json_details, "display_name", &percent_escapes,
-			temp_service->display_name);
+	if(field_wanted(fields, "host_name")) {
+		json_object_append_string(json_details, "host_name", &percent_escapes,
+				temp_service->host_name);
+		}
+	if(field_wanted(fields, "description")) {
+		json_object_append_string(json_details, "description", &percent_escapes,
+				temp_service->description);
+		}
+	if(field_wanted(fields, "display_name")) {
+		json_object_append_string(json_details, "display_name", &percent_escapes,
+				temp_service->display_name);
+		}
+	if(field_wanted(fields, "check_command")) {
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
@@ -3666,266 +3833,343 @@ void json_object_service_details(json_object *json_details,
 	json_object_append_string(json_details, "service_check_command",
 			&percent_escapes, temp_service->service_check_command);
 #endif
-	json_object_append_string(json_details, "event_handler", &percent_escapes,
-			temp_service->event_handler);
-
-	json_enumeration(json_details, format_options, "initial_state", 
-			temp_service->initial_state, svm_service_states);
-
-	json_object_append_real(json_details, "check_interval", 
-			temp_service->check_interval);
-	json_object_append_real(json_details, "retry_interval", 
-			temp_service->retry_interval);
-	json_object_append_integer(json_details, "max_attempts", 
-			temp_service->max_attempts);
-	json_object_append_boolean(json_details, "parallelize",  
-			temp_service->parallelize);
-
-	json_contactgroups = json_new_array();
-	for(temp_contact_groupsmember = temp_service->contact_groups; 
-			temp_contact_groupsmember != NULL; 
-			temp_contact_groupsmember = temp_contact_groupsmember->next) {
-		json_array_append_string(json_contactgroups, &percent_escapes,
-				temp_contact_groupsmember->group_name);
 		}
-	json_object_append_array(json_details, "contact_groups", json_contactgroups);
-
-	json_contacts = json_new_array();
-#ifdef NSCORE
-	for(temp_contactsmember = temp_service->contacts; 
-			temp_contactsmember != NULL; 
-			temp_contactsmember = temp_contactsmember->next) {
-		json_array_append_string(json_contacts, &percent_escapes,
-				temp_contactsmember->contact_name);
+	if(field_wanted(fields, "event_handler")) {
+		json_object_append_string(json_details, "event_handler", &percent_escapes,
+				temp_service->event_handler);
 		}
-#else
-	for(temp_contact = contact_list; temp_contact != NULL; 
-			temp_contact = temp_contact->next) {
-		if(TRUE == is_contact_for_service(temp_service, temp_contact)) {
-			json_array_append_string(json_contacts, &percent_escapes,
-					temp_contact->name);
+
+	if(field_wanted(fields, "initial_state")) {
+		json_enumeration(json_details, format_options, "initial_state",
+				temp_service->initial_state, svm_service_states);
+		}
+
+	if(field_wanted(fields, "check_interval")) {
+		json_object_append_real(json_details, "check_interval",
+				temp_service->check_interval);
+		}
+	if(field_wanted(fields, "retry_interval")) {
+		json_object_append_real(json_details, "retry_interval",
+				temp_service->retry_interval);
+		}
+	if(field_wanted(fields, "max_attempts")) {
+		json_object_append_integer(json_details, "max_attempts",
+				temp_service->max_attempts);
+		}
+	if(field_wanted(fields, "parallelize")) {
+		json_object_append_boolean(json_details, "parallelize",
+				temp_service->parallelize);
+		}
+
+	if(field_wanted(fields, "contact_groups")) {
+		json_contactgroups = json_new_array();
+		for(temp_contact_groupsmember = temp_service->contact_groups;
+				temp_contact_groupsmember != NULL;
+				temp_contact_groupsmember = temp_contact_groupsmember->next) {
+			json_array_append_string(json_contactgroups, &percent_escapes,
+					temp_contact_groupsmember->group_name);
 			}
+		json_object_append_array(json_details, "contact_groups", json_contactgroups);
 		}
-#endif
-	json_object_append_array(json_details, "contacts", json_contacts);
 
-	json_object_append_real(json_details, "notification_interval", 
-			temp_service->notification_interval);
-	json_object_append_real(json_details, "first_notification_delay", 
-			temp_service->first_notification_delay);
+	if(field_wanted(fields, "contacts")) {
+		json_contacts = json_new_array();
+#ifdef NSCORE
+		for(temp_contactsmember = temp_service->contacts;
+				temp_contactsmember != NULL;
+				temp_contactsmember = temp_contactsmember->next) {
+			json_array_append_string(json_contacts, &percent_escapes,
+					temp_contactsmember->contact_name);
+			}
+#else
+		for(temp_contact = contact_list; temp_contact != NULL;
+				temp_contact = temp_contact->next) {
+			if(TRUE == is_contact_for_service(temp_service, temp_contact)) {
+				json_array_append_string(json_contacts, &percent_escapes,
+						temp_contact->name);
+				}
+			}
+#endif
+		json_object_append_array(json_details, "contacts", json_contacts);
+		}
+
+	if(field_wanted(fields, "notification_interval")) {
+		json_object_append_real(json_details, "notification_interval",
+				temp_service->notification_interval);
+		}
+	if(field_wanted(fields, "first_notification_delay")) {
+		json_object_append_real(json_details, "first_notification_delay",
+				temp_service->first_notification_delay);
+		}
 
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "notify_on_unknown", 
+		json_object_append_boolean(json_details, "notify_on_unknown",
 				flag_isset(temp_service->notification_options, OPT_UNKNOWN));
-		json_object_append_boolean(json_details, "notify_on_warning", 
+		json_object_append_boolean(json_details, "notify_on_warning",
 				flag_isset(temp_service->notification_options, OPT_WARNING));
-		json_object_append_boolean(json_details, "notify_on_critical", 
+		json_object_append_boolean(json_details, "notify_on_critical",
 				flag_isset(temp_service->notification_options, OPT_CRITICAL));
-		json_object_append_boolean(json_details, "notify_on_recovery", 
+		json_object_append_boolean(json_details, "notify_on_recovery",
 				flag_isset(temp_service->notification_options, OPT_RECOVERY));
-		json_object_append_boolean(json_details, "notify_on_flapping", 
+		json_object_append_boolean(json_details, "notify_on_flapping",
 				flag_isset(temp_service->notification_options, OPT_FLAPPING));
-		json_object_append_boolean(json_details, "notify_on_downtime", 
+		json_object_append_boolean(json_details, "notify_on_downtime",
 				flag_isset(temp_service->notification_options, OPT_DOWNTIME));
 		}
 	else {
 #endif
-		json_bitmask(json_details, format_options, "notifications_options",
-				temp_service->notification_options, svm_option_types);
+		if(field_wanted(fields, "notifications_options")) {
+			json_bitmask(json_details, format_options, "notifications_options",
+					temp_service->notification_options, svm_option_types);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "notify_on_unknown", 
+	json_object_append_boolean(json_details, "notify_on_unknown",
 			temp_service->notify_on_unknown);
-	json_object_append_boolean(json_details, "notify_on_warning", 
+	json_object_append_boolean(json_details, "notify_on_warning",
 			temp_service->notify_on_warning);
-	json_object_append_boolean(json_details, "notify_on_critical", 
+	json_object_append_boolean(json_details, "notify_on_critical",
 			temp_service->notify_on_critical);
-	json_object_append_boolean(json_details, "notify_on_recovery", 
+	json_object_append_boolean(json_details, "notify_on_recovery",
 			temp_service->notify_on_recovery);
-	json_object_append_boolean(json_details, "notify_on_flapping", 
+	json_object_append_boolean(json_details, "notify_on_flapping",
 			temp_service->notify_on_flapping);
-	json_object_append_boolean(json_details, "notify_on_downtime", 
+	json_object_append_boolean(json_details, "notify_on_downtime",
 			temp_service->notify_on_downtime);
 #endif
 
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "stalk_on_ok", 
+		json_object_append_boolean(json_details, "stalk_on_ok",
 				flag_isset(temp_service->stalking_options, OPT_OK));
-		json_object_append_boolean(json_details, "stalk_on_warning", 
+		json_object_append_boolean(json_details, "stalk_on_warning",
 				flag_isset(temp_service->stalking_options, OPT_WARNING));
-		json_object_append_boolean(json_details, "stalk_on_unknown", 
+		json_object_append_boolean(json_details, "stalk_on_unknown",
 				flag_isset(temp_service->stalking_options, OPT_UNKNOWN));
-		json_object_append_boolean(json_details, "stalk_on_critical", 
+		json_object_append_boolean(json_details, "stalk_on_critical",
 				flag_isset(temp_service->stalking_options, OPT_CRITICAL));
 		}
 	else {
 #endif
-		json_bitmask(json_details, format_options, "stalking_options",
-				temp_service->stalking_options, svm_option_types);
+		if(field_wanted(fields, "stalking_options")) {
+			json_bitmask(json_details, format_options, "stalking_options",
+					temp_service->stalking_options, svm_option_types);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "stalk_on_ok", 
+	json_object_append_boolean(json_details, "stalk_on_ok",
 			temp_service->stalk_on_ok);
-	json_object_append_boolean(json_details, "stalk_on_warning", 
+	json_object_append_boolean(json_details, "stalk_on_warning",
 			temp_service->stalk_on_warning);
-	json_object_append_boolean(json_details, "stalk_on_unknown", 
+	json_object_append_boolean(json_details, "stalk_on_unknown",
 			temp_service->stalk_on_unknown);
-	json_object_append_boolean(json_details, "stalk_on_critical", 
+	json_object_append_boolean(json_details, "stalk_on_critical",
 			temp_service->stalk_on_critical);
 #endif
 
-	json_object_append_boolean(json_details, "is_volatile", 
-			temp_service->is_volatile);
-	json_object_append_string(json_details, "notification_period",
-			&percent_escapes, temp_service->notification_period);
-	json_object_append_string(json_details, "check_period", &percent_escapes,
-			temp_service->check_period);
-	json_object_append_boolean(json_details, "flap_detection_enabled", 
-			temp_service->flap_detection_enabled);
-	json_object_append_real(json_details, "low_flap_threshold", 
-			temp_service->low_flap_threshold);
-	json_object_append_real(json_details, "high_flap_threshold", 
-			temp_service->high_flap_threshold);
+	if(field_wanted(fields, "is_volatile")) {
+		json_object_append_boolean(json_details, "is_volatile",
+				temp_service->is_volatile);
+		}
+	if(field_wanted(fields, "notification_period")) {
+		json_object_append_string(json_details, "notification_period",
+				&percent_escapes, temp_service->notification_period);
+		}
+	if(field_wanted(fields, "check_period")) {
+		json_object_append_string(json_details, "check_period", &percent_escapes,
+				temp_service->check_period);
+		}
+	if(field_wanted(fields, "flap_detection_enabled")) {
+		json_object_append_boolean(json_details, "flap_detection_enabled",
+				temp_service->flap_detection_enabled);
+		}
+	if(field_wanted(fields, "low_flap_threshold")) {
+		json_object_append_real(json_details, "low_flap_threshold",
+				temp_service->low_flap_threshold);
+		}
+	if(field_wanted(fields, "high_flap_threshold")) {
+		json_object_append_real(json_details, "high_flap_threshold",
+				temp_service->high_flap_threshold);
+		}
 
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "flap_detection_on_ok", 
+		json_object_append_boolean(json_details, "flap_detection_on_ok",
 				flag_isset(temp_service->flap_detection_options, OPT_OK));
-		json_object_append_boolean(json_details, "flap_detection_on_warning", 
+		json_object_append_boolean(json_details, "flap_detection_on_warning",
 				flag_isset(temp_service->flap_detection_options, OPT_WARNING));
-		json_object_append_boolean(json_details, "flap_detection_on_unknown", 
+		json_object_append_boolean(json_details, "flap_detection_on_unknown",
 				flag_isset(temp_service->flap_detection_options, OPT_UNKNOWN));
-		json_object_append_boolean(json_details, "flap_detection_on_critical", 
+		json_object_append_boolean(json_details, "flap_detection_on_critical",
 				flag_isset(temp_service->flap_detection_options, OPT_CRITICAL));
 		}
 	else {
 #endif
-		json_bitmask(json_details, format_options, "flap_detection_options",
-				temp_service->flap_detection_options, svm_option_types);
+		if(field_wanted(fields, "flap_detection_options")) {
+			json_bitmask(json_details, format_options, "flap_detection_options",
+					temp_service->flap_detection_options, svm_option_types);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "flap_detection_on_ok", 
+	json_object_append_boolean(json_details, "flap_detection_on_ok",
 			temp_service->flap_detection_on_ok);
-	json_object_append_boolean(json_details, "flap_detection_on_warning", 
+	json_object_append_boolean(json_details, "flap_detection_on_warning",
 			temp_service->flap_detection_on_warning);
-	json_object_append_boolean(json_details, "flap_detection_on_unknown", 
+	json_object_append_boolean(json_details, "flap_detection_on_unknown",
 			temp_service->flap_detection_on_unknown);
-	json_object_append_boolean(json_details, "flap_detection_on_critical", 
+	json_object_append_boolean(json_details, "flap_detection_on_critical",
 			temp_service->flap_detection_on_critical);
 #endif
 
-	json_object_append_boolean(json_details, "process_performance_data", 
-			temp_service->process_performance_data);
-	json_object_append_boolean(json_details, "check_freshness", 
-			temp_service->check_freshness);
-	json_object_append_integer(json_details, "freshness_threshold", 
-			temp_service->freshness_threshold);
+	if(field_wanted(fields, "process_performance_data")) {
+		json_object_append_boolean(json_details, "process_performance_data",
+				temp_service->process_performance_data);
+		}
+	if(field_wanted(fields, "check_freshness")) {
+		json_object_append_boolean(json_details, "check_freshness",
+				temp_service->check_freshness);
+		}
+	if(field_wanted(fields, "freshness_threshold")) {
+		json_object_append_integer(json_details, "freshness_threshold",
+				temp_service->freshness_threshold);
+		}
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, 
+		json_object_append_boolean(json_details,
 				"accept_passive_service_checks",
 				temp_service->accept_passive_checks);
 		}
 	else {
 #endif
-		json_object_append_boolean(json_details, "accept_passive_checks", 
-				temp_service->accept_passive_checks);
+		if(field_wanted(fields, "accept_passive_checks")) {
+			json_object_append_boolean(json_details, "accept_passive_checks",
+					temp_service->accept_passive_checks);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "accept_passive_service_checks", 
+	json_object_append_boolean(json_details, "accept_passive_service_checks",
 			temp_service->accept_passive_service_checks);
 #endif
-	json_object_append_boolean(json_details, "event_handler_enabled", 
-			temp_service->event_handler_enabled);
-	json_object_append_boolean(json_details, "checks_enabled", 
-			temp_service->checks_enabled);
-	json_object_append_boolean(json_details, "retain_status_information", 
-			temp_service->retain_status_information);
-	json_object_append_boolean(json_details, "retain_nonstatus_information", 
-			temp_service->retain_nonstatus_information);
-	json_object_append_boolean(json_details, "notifications_enabled", 
-			temp_service->notifications_enabled);
+	if(field_wanted(fields, "event_handler_enabled")) {
+		json_object_append_boolean(json_details, "event_handler_enabled",
+				temp_service->event_handler_enabled);
+		}
+	if(field_wanted(fields, "checks_enabled")) {
+		json_object_append_boolean(json_details, "checks_enabled",
+				temp_service->checks_enabled);
+		}
+	if(field_wanted(fields, "retain_status_information")) {
+		json_object_append_boolean(json_details, "retain_status_information",
+				temp_service->retain_status_information);
+		}
+	if(field_wanted(fields, "retain_nonstatus_information")) {
+		json_object_append_boolean(json_details, "retain_nonstatus_information",
+				temp_service->retain_nonstatus_information);
+		}
+	if(field_wanted(fields, "notifications_enabled")) {
+		json_object_append_boolean(json_details, "notifications_enabled",
+				temp_service->notifications_enabled);
+		}
 #ifdef JSON_NAGIOS_4X
 #if 0
 	if( CORE3_COMPATIBLE) {
-		json_object_append_boolean(json_details, "obsess_over_service", 
+		json_object_append_boolean(json_details, "obsess_over_service",
 				temp_service->obsess);
 		}
 	else {
 #endif
-		json_object_append_boolean(json_details, "obsess", temp_service->obsess);
+		if(field_wanted(fields, "obsess")) {
+			json_object_append_boolean(json_details, "obsess", temp_service->obsess);
+			}
 #if 0
 		}
 #endif
 #else
-	json_object_append_boolean(json_details, "obsess_over_service", 
+	json_object_append_boolean(json_details, "obsess_over_service",
 			temp_service->obsess_over_service);
 #endif
 #ifndef JSON_NAGIOS_4X
-	json_object_append_boolean(json_details, "failure_prediction_enabled", 
+	json_object_append_boolean(json_details, "failure_prediction_enabled",
 			temp_service->failure_prediction_enabled);
-	json_object_append_string(json_details, "failure_prediction_options", 
+	json_object_append_string(json_details, "failure_prediction_options",
 			NULL, temp_service->failure_prediction_options);
 #endif
 #ifdef JSON_NAGIOS_4X
-	json_object_append_integer(json_details, "hourly_value", 
-			temp_service->hourly_value);
+	if(field_wanted(fields, "hourly_value")) {
+		json_object_append_integer(json_details, "hourly_value",
+				temp_service->hourly_value);
+		}
 #endif
 
 #ifdef JSON_NAGIOS_4X
-	json_parent_services = json_new_array();
-	for(temp_servicesmember = temp_service->parents; 
-			temp_servicesmember != NULL; 
-			temp_servicesmember = temp_servicesmember->next) {
-		json_parent_service = json_new_object();
-		json_object_append_string(json_parent_service, "host_name",
-				&percent_escapes, temp_servicesmember->host_name);
-		json_object_append_string(json_parent_service, "service_description",
-				&percent_escapes, temp_servicesmember->service_description);
-		json_array_append_object(json_parent_services, json_parent_service);
+	if(field_wanted(fields, "parents")) {
+		json_parent_services = json_new_array();
+		for(temp_servicesmember = temp_service->parents;
+				temp_servicesmember != NULL;
+				temp_servicesmember = temp_servicesmember->next) {
+			json_parent_service = json_new_object();
+			json_object_append_string(json_parent_service, "host_name",
+					&percent_escapes, temp_servicesmember->host_name);
+			json_object_append_string(json_parent_service, "service_description",
+					&percent_escapes, temp_servicesmember->service_description);
+			json_array_append_object(json_parent_services, json_parent_service);
+			}
+		json_object_append_array(json_details, "parents", json_parent_services);
 		}
-	json_object_append_array(json_details, "parents", json_parent_services);
 
-	json_child_services = json_new_array();
-	for(temp_servicesmember = temp_service->children;
-			temp_servicesmember != NULL;
-			temp_servicesmember = temp_servicesmember->next) {
-		json_child_service = json_new_object();
-		json_object_append_string(json_child_service, "host_name",
-				&percent_escapes, temp_servicesmember->host_name);
-		json_object_append_string(json_child_service, "service_description",
-				&percent_escapes, temp_servicesmember->service_description);
-		json_array_append_object(json_child_services, json_child_service);
+	if(field_wanted(fields, "children")) {
+		json_child_services = json_new_array();
+		for(temp_servicesmember = temp_service->children;
+				temp_servicesmember != NULL;
+				temp_servicesmember = temp_servicesmember->next) {
+			json_child_service = json_new_object();
+			json_object_append_string(json_child_service, "host_name",
+					&percent_escapes, temp_servicesmember->host_name);
+			json_object_append_string(json_child_service, "service_description",
+					&percent_escapes, temp_servicesmember->service_description);
+			json_array_append_object(json_child_services, json_child_service);
+			}
+		json_object_append_array(json_details, "children", json_child_services);
 		}
-	json_object_append_array(json_details, "children", json_child_services);
 #endif
 
-	json_object_append_string(json_details, "notes", &percent_escapes,
-			temp_service->notes);
-	json_object_append_string(json_details, "notes_url", &percent_escapes,
-			temp_service->notes_url);
-	json_object_append_string(json_details, "action_url", &percent_escapes,
-			temp_service->action_url);
-	json_object_append_string(json_details, "icon_image", &percent_escapes,
-			temp_service->icon_image);
-	json_object_append_string(json_details, "icon_image_alt", &percent_escapes,
-			temp_service->icon_image_alt);
-	json_object_append_object(json_details, "custom_variables", 
-			json_object_custom_variables(temp_service->custom_variables));
+	if(field_wanted(fields, "notes")) {
+		json_object_append_string(json_details, "notes", &percent_escapes,
+				temp_service->notes);
+		}
+	if(field_wanted(fields, "notes_url")) {
+		json_object_append_string(json_details, "notes_url", &percent_escapes,
+				temp_service->notes_url);
+		}
+	if(field_wanted(fields, "action_url")) {
+		json_object_append_string(json_details, "action_url", &percent_escapes,
+				temp_service->action_url);
+		}
+	if(field_wanted(fields, "icon_image")) {
+		json_object_append_string(json_details, "icon_image", &percent_escapes,
+				temp_service->icon_image);
+		}
+	if(field_wanted(fields, "icon_image_alt")) {
+		json_object_append_string(json_details, "icon_image_alt", &percent_escapes,
+				temp_service->icon_image_alt);
+		}
+	if(field_wanted(fields, "custom_variables")) {
+		json_object_append_object(json_details, "custom_variables",
+				json_object_custom_variables(temp_service->custom_variables));
+		}
 	}
 
 int json_object_servicegroup_passes_selection(servicegroup *temp_servicegroup,

@@ -480,7 +480,18 @@ function sortIndicator(sort: SortState, key: SortKey): string {
 export function renderServices(container: HTMLElement, initialFilter: ProblemFilterMode = 'all'): () => void {
 	container.innerHTML = '<p>Loading services...</p>';
 
-	const sort: SortState = { key: 'status', direction: 'asc' };
+	// cgi/status.c defaults to sort_type=SORT_NONE (i.e. no sort at all --
+	// services list in servicestatus_list's natural/registration order,
+	// which groups each host's services together since they're normally
+	// defined consecutively): none of its own generated links (including
+	// the "Unhandled"/nav links this SPA's Problems > Services mirrors)
+	// pass sorttype=/sortoption= to override that. There's no equivalent
+	// "don't sort at all" state here, so sorting by host ascending is the
+	// closest match -- it's what upstream's default ends up looking like,
+	// and (unlike defaulting to status) it keeps a host's own rows
+	// together so the collapsed Host cell (see renderHostGroupCell) has
+	// something to collapse by default.
+	const sort: SortState = { key: 'host', direction: 'asc' };
 	let selectedGroup: string | null = null;
 	let problemFilter: ProblemFilterMode = initialFilter;
 	let stopped = false;

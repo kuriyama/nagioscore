@@ -355,7 +355,12 @@ function sortIndicator(sort: SortState, key: SortKey): string {
 export function renderHosts(container: HTMLElement, initialFilter: ProblemFilterMode = 'all'): () => void {
 	container.innerHTML = '<p>Loading hosts...</p>';
 
-	const sort: SortState = { key: 'status', direction: 'asc' };
+	// See services.ts's identical comment -- cgi/status.c defaults to no
+	// sort at all (sort_type=SORT_NONE), and none of its generated links
+	// (including the ones this SPA's Problems > Hosts mirrors) override
+	// that, so the closest match here is sorting by host name ascending
+	// rather than by status.
+	const sort: SortState = { key: 'host', direction: 'asc' };
 	let selectedGroup: string | null = null;
 	let problemFilter: ProblemFilterMode = initialFilter;
 	let stopped = false;

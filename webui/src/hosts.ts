@@ -213,6 +213,13 @@ function renderHostCell(
 	row.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
+	// The icon row's own content must not wrap either -- otherwise a row
+	// with enough simultaneous icons (ack + disabled + downtime + notes +
+	// logo, say) reflows onto a second/third line and ends up visibly
+	// taller than its neighbors, which looks like inconsistent cell
+	// padding since the content is vertically centered in whatever height
+	// the row ends up at.
+	iconLine.style.whiteSpace = 'nowrap';
 	if (status.problem_has_been_acknowledged) {
 		icon(iconLine, 'ack.gif', 'This problem has been acknowledged');
 	}

@@ -243,6 +243,15 @@ function renderHostGroupCell(
 
 	if (hostStatus) {
 		const iconLine = document.createElement('div');
+		// Unlike the name link (see renderServiceCell's comment), the icon
+		// row itself should never wrap: a host/service with enough
+		// simultaneous conditions to show several icons (ack + disabled +
+		// downtime + notes + logo, say) would otherwise wrap onto a second
+		// or third line, making that one row visibly much taller than its
+		// neighbors (reported as inconsistent-looking cell padding, since
+		// the content is vertically centered within whatever height the
+		// row ends up at).
+		iconLine.style.whiteSpace = 'nowrap';
 		if (hostStatus.problem_has_been_acknowledged) {
 			icon(iconLine, 'ack.gif', 'This host problem has been acknowledged');
 		}
@@ -307,6 +316,9 @@ function renderServiceCell(
 	row.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
+	// See renderHostGroupCell's comment -- the icon row itself must not
+	// wrap, even though the name link next to it may.
+	iconLine.style.whiteSpace = 'nowrap';
 	const s = entry.status;
 	if (s.problem_has_been_acknowledged) {
 		icon(iconLine, 'ack.gif', 'This problem has been acknowledged');

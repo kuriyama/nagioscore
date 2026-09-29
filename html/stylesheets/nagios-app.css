@@ -83,10 +83,11 @@ body {
    show_service_detail() table has no font-size override of its own (so
    its cells render at common.css's "* {font-size:8pt}" default -- a
    previous pass here added 10pt, measurably looser than that and
-   reported as reduced information density), but real-browser inspection
-   of an actual upstream page shows 2px left/right and 0px top/bottom
-   padding on these cells, so that's matched explicitly here rather than
-   left to whatever the browser's own default td padding happens to be.
+   reported as reduced information density). Its left/right cell padding
+   is actually 4px (outer td) + 2px (an inner table's own td, nested one
+   level down) = 6px total -- this SPA's table has no such nesting, so
+   6px is set directly here to match the same total visual spacing;
+   top/bottom stays 0px, matching upstream.
    width:100% matches the table's own width='100%' HTML attribute in
    cgi/status.c, so column widths stay put when the row count/content
    changes (e.g. switching the Problems/Unhandled Problems filter)
@@ -96,7 +97,7 @@ table.status {
 	}
 
 table.status td {
-	padding: 0 2px;
+	padding: 0 6px;
 	}
 
 #detailActionStatus {

@@ -173,6 +173,10 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	img.width = 20;
 	img.height = 20;
 	img.style.marginRight = '2px';
+	// See hosts.ts's matching icon() -- without this the img's default
+	// inline vertical-align:baseline leaves descender space below it,
+	// making the icon row's div taller than the 20px icons it contains.
+	img.style.verticalAlign = 'middle';
 	if (href) {
 		const a = document.createElement('a');
 		a.href = href;

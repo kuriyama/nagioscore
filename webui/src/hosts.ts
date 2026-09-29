@@ -148,6 +148,11 @@ function icon(el: HTMLElement, src: string, alt: string, href?: string): void {
 	img.width = 20;
 	img.height = 20;
 	img.style.marginRight = '2px';
+	// Without this, the img's default inline vertical-align:baseline leaves
+	// room below it for descenders (a gap of a few px depending on the
+	// container's font-size/line-height), so the icon row's div ends up
+	// visibly taller than the 20px icons it contains.
+	img.style.verticalAlign = 'middle';
 	if (href) {
 		const a = document.createElement('a');
 		a.href = href;

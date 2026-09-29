@@ -24,6 +24,50 @@
 #ifndef NAGIOS_OBJECTJSON_H_INCLUDED
 #define NAGIOS_OBJECTJSON_H_INCLUDED
 
+/* Parsed form of the "fields=" cgivar (space-separated field names) used
+	by json_object_host_details()/json_object_service_details() to skip
+	building fields nobody asked for -- see field_wanted() below.
+
+	This is built once per request (by field_filter_init(), from the raw
+	cgivar string) and then reused for every host/service record, rather
+	than re-parsing the raw string on every single field_wanted() check
+	for every record: the CGI input is attacker-influenced (an
+	authenticated user's own query string, but untrusted input all the
+	same), and re-scanning an arbitrarily long string that many times
+	would let a single request make itself pathologically slow. Both the
+	amount of input examined (FIELD_FILTER_MAX_LEN) and the number of
+	tokens kept (FIELD_FILTER_MAX_TOKENS) are capped well above anything
+	a legitimate request needs -- even naming literally every field a
+	service has (the larger of the two object types, ~80 fields) comes to
+	under 2KB and under 100 tokens -- so the caps never affect a real
+	caller; they only bound how much work a hostile one can cause. */
+#define FIELD_FILTER_MAX_LEN		4096
+#define FIELD_FILTER_MAX_TOKENS		100
+
+typedef struct field_filter_struct {
+	/* TRUE if "fields=" was specified at all (even if it parsed out to
+		zero usable tokens) -- distinguishes "no filter, return
+		everything" (the pre-existing/default behavior) from "filter
+		specified but nothing in it matched" (return nothing). */
+	int		active;
+	int		count;
+	char	buf[FIELD_FILTER_MAX_LEN + 1];
+	const char *names[FIELD_FILTER_MAX_TOKENS];
+	} field_filter;
+
+extern void field_filter_init(field_filter *, const char *);
+
+/* Returns TRUE if `ff` is NULL/inactive (no restriction -- want
+	everything) or `name` is one of the field names `ff` was built from.
+	Used by json_object_host_details()/json_object_service_details() to
+	skip building (percent-escaping, sub-array walking, etc.) fields the
+	caller never asked for -- on a large install, "objectjson.cgi?query=
+	servicelist&details=true" dumps ~80 fields per service whether or not
+	the caller reads them; the webui, for example, only ever reads
+	notes_url/action_url/icon_image. See cgi/objectjson.c's
+	field_filter_init(). */
+extern int field_wanted(const field_filter *, const char *);
+
 /* Structure containing CGI query string options and values */
 typedef struct object_json_cgi_data_struct {
 	/* Format options for JSON output */
@@ -220,17 +264,8 @@ extern json_object *json_object_hostlist(unsigned, int, int, int, int, host *,
 		int, host *, hostgroup *, contact *, contactgroup *, timeperiod *,
 		timeperiod *, command *, command *, char *);
 extern json_object *json_object_host(unsigned, host *, char *);
-extern void json_object_host_details(json_object *, unsigned, host *, char *);
-
-/* Returns TRUE if `fields` is NULL (no restriction -- want everything) or
-	`name` appears as one of its space-separated tokens. Used by
-	json_object_host_details()/json_object_service_details() to skip
-	building (percent-escaping, sub-array walking, etc.) fields the caller
-	never asked for -- on a large install, "objectjson.cgi?query=
-	servicelist&details=true" dumps ~80 fields per service whether or not
-	the caller reads them; the webui, for example, only ever reads
-	notes_url/action_url/icon_image. See cgi/objectjson.c's field_wanted(). */
-extern int field_wanted(const char *fields, const char *name);
+extern void json_object_host_details(json_object *, unsigned, host *,
+		const field_filter *);
 
 extern json_object *json_object_hostgroupcount(unsigned, host *);
 extern json_object *json_object_hostgrouplist(unsigned, int, int, int, host *);
@@ -245,7 +280,8 @@ extern json_object *json_object_servicelist(unsigned, int, int, int, host *,
 		char *, char *, char *, contactgroup *, timeperiod *, timeperiod *,
 		command *, command *, char *);
 extern json_object *json_object_service(unsigned, service *, char *);
-extern void json_object_service_details(json_object *, unsigned, service *, char *);
+extern void json_object_service_details(json_object *, unsigned, service *,
+		const field_filter *);
 
 extern json_object *json_object_servicegroupcount(service *);
 extern json_object *json_object_servicegrouplist(unsigned, int, int, int, 

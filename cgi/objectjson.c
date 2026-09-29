@@ -2634,29 +2634,51 @@ json_object * json_object_hostcount(int use_parent_host, host *parent_host,
 	return json_data;
 	}
 
-/* See include/objectjson.h's declaration for the rationale. */
-int field_wanted(const char *fields, const char *name) {
-	const char *p = fields;
-	size_t name_len;
+/* See include/objectjson.h's declaration for the rationale, including why
+	this copies into a capped, fixed-size buffer and caps the number of
+	tokens kept, rather than just walking the cgivar string as given. */
+void field_filter_init(field_filter *ff, const char *fields) {
+	char *p;
+
+	ff->active = (NULL != fields);
+	ff->count = 0;
+	ff->buf[0] = '\0';
 
 	if(NULL == fields) {
-		return TRUE;
+		return;
 		}
 
-	name_len = strlen(name);
-	while(*p != '\0') {
-		const char *start;
+	strncpy(ff->buf, fields, FIELD_FILTER_MAX_LEN);
+	ff->buf[FIELD_FILTER_MAX_LEN] = '\0';
+
+	p = ff->buf;
+	while(*p != '\0' && ff->count < FIELD_FILTER_MAX_TOKENS) {
 		while(*p == ' ') {
 			p++;
 			}
 		if(*p == '\0') {
 			break;
 			}
-		start = p;
+		ff->names[ff->count++] = p;
 		while(*p != '\0' && *p != ' ') {
 			p++;
 			}
-		if(((size_t)(p - start) == name_len) && !strncmp(start, name, name_len)) {
+		if(*p == ' ') {
+			*p = '\0';
+			p++;
+			}
+		}
+	}
+
+int field_wanted(const field_filter *ff, const char *name) {
+	int i;
+
+	if(NULL == ff || FALSE == ff->active) {
+		return TRUE;
+		}
+
+	for(i = 0; i < ff->count; i++) {
+		if(!strcmp(ff->names[i], name)) {
 			return TRUE;
 			}
 		}
@@ -2678,11 +2700,14 @@ json_object * json_object_hostlist(unsigned format_options, int start,
 	host *temp_host;
 	int current = 0;
 	int counted = 0;
+	field_filter ff;
+
+	field_filter_init(&ff, fields);
 
 	json_data = json_new_object();
-	json_object_append_object(json_data, "selectors", 
-			json_object_host_selectors(start, count, use_parent_host, 
-			parent_host, use_child_host, child_host, temp_hostgroup, 
+	json_object_append_object(json_data, "selectors",
+			json_object_host_selectors(start, count, use_parent_host,
+			parent_host, use_child_host, child_host, temp_hostgroup,
 			temp_contact, temp_contactgroup, check_timeperiod,
 			notification_timeperiod, check_command, event_handler));
 
@@ -2707,7 +2732,7 @@ json_object * json_object_hostlist(unsigned format_options, int start,
 			if( details > 0) {
 				json_host_details = json_new_object();
 				json_object_host_details(json_host_details, format_options,
-						temp_host, fields);
+						temp_host, &ff);
 				json_object_append_object(json_hostlist_object, temp_host->name, 
 						json_host_details);
 				}
@@ -2735,17 +2760,20 @@ json_object *json_object_host(unsigned format_options, host *temp_host,
 
 	json_object *json_host = json_new_object();
 	json_object *json_details = json_new_object();
+	field_filter ff;
+
+	field_filter_init(&ff, fields);
 
 	json_object_append_string(json_details, "name", &percent_escapes,
 			temp_host->name);
-	json_object_host_details(json_details, format_options, temp_host, fields);
+	json_object_host_details(json_details, format_options, temp_host, &ff);
 	json_object_append_object(json_host, "host", json_details);
 
 	return json_host;
 }
 
 void json_object_host_details(json_object *json_details, unsigned format_options,
-		host *temp_host, char *fields) {
+		host *temp_host, const field_filter *fields) {
 
 	json_array *json_parent_hosts;
 	json_array *json_child_hosts;
@@ -3673,10 +3701,13 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 	int counted = 0;
 	int service_count;
 	char *buf;
+	field_filter ff;
+
+	field_filter_init(&ff, fields);
 
 	json_data = json_new_object();
-	json_object_append_object(json_data, "selectors", 
-			json_object_service_selectors(start, count, use_parent_host, 
+	json_object_append_object(json_data, "selectors",
+			json_object_service_selectors(start, count, use_parent_host,
 			parent_host, use_child_host, child_host, temp_hostgroup, match_host,
 			temp_servicegroup, temp_contact, service_description,
 			parent_service_name, child_service_name, temp_contactgroup,
@@ -3730,7 +3761,7 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 				if( details > 0) {
 					json_service_details = json_new_object();
 					json_object_service_details(json_service_details,
-							format_options, temp_service, fields);
+							format_options, temp_service, &ff);
 					asprintf(&buf, "%s", 
 							temp_service->description);
 					json_object_append_object(json_servicelist_object, buf, 
@@ -3769,6 +3800,9 @@ json_object *json_object_service(unsigned format_options, service *temp_service,
 
 	json_object *json_service = json_new_object();
 	json_object *json_details = json_new_object();
+	field_filter ff;
+
+	field_filter_init(&ff, fields);
 
 /* host_name and description are included when json_object_service_details()
    is called, so we don't need them here */
@@ -3778,14 +3812,15 @@ json_object *json_object_service(unsigned format_options, service *temp_service,
 	json_object_append_string(json_details, "description", &percent_escapes,
 			temp_service->description);
  */
-	json_object_service_details(json_details, format_options, temp_service, fields);
+	json_object_service_details(json_details, format_options, temp_service, &ff);
 	json_object_append_object(json_service, "service", json_details);
 
 	return json_service;
 }
 
 void json_object_service_details(json_object *json_details,
-		unsigned format_options, service *temp_service, char *fields) {
+		unsigned format_options, service *temp_service,
+		const field_filter *fields) {
 
 	json_array *json_contactgroups;
 	json_array *json_contacts;

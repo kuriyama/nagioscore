@@ -36,6 +36,9 @@ typedef struct status_json_cgi_data_struct {
 	int			count;
 	/* Return details for each entity in a list request */
 	int			details;
+	/* Space-separated field names to restrict host/service detail output
+		to (see jsonutils.h's field_filter); NULL means every field */
+	char *		fields;
 	/* strftime format string for time_t values */
 	char *		strftime_format;
 	/* Name of host whose children should be returned if parenthost is 
@@ -238,10 +241,11 @@ extern json_object *json_status_hostcount(unsigned, int, host *, int, host *,
 		timeperiod *, timeperiod *, command *, command *);
 extern json_object *json_status_hostlist(unsigned, int, int, int, int, host *,
 		int, host *, hostgroup *, int, unsigned, contact *, int, time_t, time_t,
-		contactgroup *, timeperiod *, timeperiod *, command *, command *);
-extern json_object *json_status_host(unsigned, host *, hoststatus *);
+		contactgroup *, timeperiod *, timeperiod *, command *, command *,
+		char *);
+extern json_object *json_status_host(unsigned, host *, hoststatus *, char *);
 extern void json_status_host_details(json_object *, unsigned, host *,
-		hoststatus *);
+		hoststatus *, const field_filter *);
 extern int passes_host_properties_filter(hoststatus *, unsigned);
 extern int passes_service_properties_filter(servicestatus *, unsigned);
 
@@ -252,10 +256,12 @@ extern json_object *json_status_servicecount(unsigned, host *, int, host *,
 extern json_object *json_status_servicelist(unsigned, int, int, int, host *,
 		int, host *, int, host *, hostgroup *, servicegroup *, int, int,
 		unsigned, contact *, int, time_t, time_t, char *, char *, char *,
-		contactgroup *, timeperiod *, timeperiod *, command *, command *);
-extern json_object *json_status_service(unsigned, service *, servicestatus *);
+		contactgroup *, timeperiod *, timeperiod *, command *, command *,
+		char *);
+extern json_object *json_status_service(unsigned, service *, servicestatus *,
+		char *);
 extern void json_status_service_details(json_object *, unsigned, service *,
-		servicestatus *);
+		servicestatus *, const field_filter *);
 
 #if 0
 extern void json_status_contactlist(unsigned, unsigned, unsigned, unsigned, 

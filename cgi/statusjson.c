@@ -363,6 +363,16 @@ option_help status_json_help[] = {
 		NULL
 		},
 	{ 
+		"totals",
+		"Include Totals",
+		"boolean",
+		{ NULL },
+		{ "hostlist", "servicelist", NULL },
+		NULL,
+		"If true, also return 'totals' with the hostcount and servicecount query results for the same hostgroup/servicegroup, ignoring every other selector (statuses, properties, etc.), saving separate requests.",
+		NULL
+		},
+	{ 
 		"dateformat",
 		"Date Format",
 		"string",
@@ -746,6 +756,7 @@ int main(void) {
 	time_t	last_status_data_update = (time_t)0;
 	hoststatus *temp_hoststatus = NULL;
 	servicestatus *temp_servicestatus = NULL;
+	json_object *json_data;
 
 	/* The official time of the query */
 	time(&query_time);
@@ -906,8 +917,8 @@ int main(void) {
 				get_query_status(query_status, cgi_data.query),
 				last_status_data_update, &current_authdata,
 				RESULT_SUCCESS, ""));
-		json_object_append_object(json_root, "data", 
-				json_status_hostlist(cgi_data.format_options, cgi_data.start,
+		json_data = json_status_hostlist(cgi_data.format_options,
+				cgi_data.start,
 				cgi_data.count, cgi_data.details, cgi_data.use_parent_host,
 				cgi_data.parent_host, cgi_data.use_child_host,
 				cgi_data.child_host, cgi_data.hostgroup, cgi_data.host_statuses,
@@ -916,7 +927,13 @@ int main(void) {
 				cgi_data.end_time, cgi_data.contactgroup,
 				cgi_data.check_timeperiod,
 				cgi_data.host_notification_timeperiod, cgi_data.check_command,
-				cgi_data.event_handler, cgi_data.fields));
+				cgi_data.event_handler, cgi_data.fields);
+		if(cgi_data.totals) {
+			json_object_append_object(json_data, "totals",
+					json_status_totals(cgi_data.format_options,
+					cgi_data.hostgroup, cgi_data.servicegroup));
+			}
+		json_object_append_object(json_root, "data", json_data);
 		break;
 	case STATUS_QUERY_HOST:
 		temp_hoststatus = find_hoststatus(cgi_data.host_name);
@@ -970,8 +987,8 @@ int main(void) {
 				get_query_status(query_status, cgi_data.query),
 				last_status_data_update, &current_authdata,
 				RESULT_SUCCESS, ""));
-		json_object_append_object(json_root, "data", 
-				json_status_servicelist(cgi_data.format_options, cgi_data.start,
+		json_data = json_status_servicelist(cgi_data.format_options,
+				cgi_data.start,
 				cgi_data.count, cgi_data.details, cgi_data.host,
 				cgi_data.use_parent_host, cgi_data.parent_host,
 				cgi_data.use_child_host, cgi_data.child_host,
@@ -985,7 +1002,13 @@ int main(void) {
 				cgi_data.check_timeperiod,
 				cgi_data.service_notification_timeperiod,
 				cgi_data.check_command, cgi_data.event_handler,
-				cgi_data.fields));
+				cgi_data.fields);
+		if(cgi_data.totals) {
+			json_object_append_object(json_data, "totals",
+					json_status_totals(cgi_data.format_options,
+					cgi_data.hostgroup, cgi_data.servicegroup));
+			}
+		json_object_append_object(json_root, "data", json_data);
 		break;
 	case STATUS_QUERY_SERVICE:
 		temp_servicestatus = find_servicestatus(cgi_data.host_name, 
@@ -1213,6 +1236,7 @@ void init_cgi_data(status_json_cgi_data *cgi_data) {
 	cgi_data->count = 0;
 	cgi_data->details = 0;
 	cgi_data->fields = NULL;
+	cgi_data->totals = 0;
 	cgi_data->strftime_format = NULL;
 	cgi_data->parent_host_name = NULL;
 	cgi_data->use_parent_host = 0;
@@ -1747,6 +1771,17 @@ int process_cgivars(json_object *json_root, status_json_cgi_data *cgi_data,
 					get_query_status(query_status, cgi_data->query),
 					json_root, query_time, authinfo, variables[x],
 					variables[x+1], &(cgi_data->details))) != RESULT_SUCCESS) {
+				break;
+				}
+			x++;
+			}
+
+		else if(!strcmp(variables[x], "totals")) {
+			if((result = parse_boolean_cgivar(THISCGI,
+					svm_get_string_from_value(cgi_data->query, valid_queries),
+					get_query_status(query_status, cgi_data->query),
+					json_root, query_time, authinfo, variables[x],
+					variables[x+1], &(cgi_data->totals))) != RESULT_SUCCESS) {
 				break;
 				}
 			x++;
@@ -2811,6 +2846,29 @@ int passes_service_properties_filter(servicestatus *temp_servicestatus, unsigned
 		return FALSE;
 
 	return TRUE;
+	}
+
+/* See include/statusjson.h's declaration. Deliberately just calls the
+	existing hostcount/servicecount implementations (with every selector
+	other than the group left at its "all" default) rather than counting
+	anything itself, so the totals are exactly what the standalone
+	queries would have returned for the same group. */
+json_object *json_status_totals(unsigned format_options,
+		hostgroup *temp_hostgroup, servicegroup *temp_servicegroup) {
+
+	json_object *json_totals = json_new_object();
+
+	json_object_append_object(json_totals, "hostcount",
+			json_status_hostcount(format_options, 0, NULL, 0, NULL,
+			temp_hostgroup, HOST_STATUS_ALL, NULL, STATUS_TIME_INVALID,
+			(time_t)0, (time_t)0, NULL, NULL, NULL, NULL, NULL));
+	json_object_append_object(json_totals, "servicecount",
+			json_status_servicecount(format_options, NULL, 0, NULL, 0, NULL,
+			temp_hostgroup, temp_servicegroup, HOST_STATUS_ALL,
+			SERVICE_STATUS_ALL, NULL, STATUS_TIME_INVALID, (time_t)0,
+			(time_t)0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+
+	return json_totals;
 	}
 
 json_object *json_status_hostlist(unsigned format_options, int start, int count,

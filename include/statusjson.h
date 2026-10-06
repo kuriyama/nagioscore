@@ -39,6 +39,9 @@ typedef struct status_json_cgi_data_struct {
 	/* Space-separated field names to restrict host/service detail output
 		to (see jsonutils.h's field_filter); NULL means every field */
 	char *		fields;
+	/* Append hostcount/servicecount results ("totals") to a hostlist/
+		servicelist response -- see json_status_totals() */
+	int			totals;
 	/* strftime format string for time_t values */
 	char *		strftime_format;
 	/* Name of host whose children should be returned if parenthost is 
@@ -239,6 +242,15 @@ typedef struct status_json_cgi_data_struct {
 extern json_object *json_status_hostcount(unsigned, int, host *, int, host *, 
 		hostgroup *, int, contact *, int, time_t, time_t, contactgroup *,
 		timeperiod *, timeperiod *, command *, command *);
+/* hostcount + servicecount for the given hostgroup/servicegroup, in one
+	object, for hostlist/servicelist's totals=true. Every CGI request
+	re-reads objects.cache and status.dat from scratch, which on a large
+	install dwarfs the cost of any single query -- so a page that needs a
+	list plus the status totals (e.g. the webui's Hosts view) saves whole
+	file loads by getting them in one request instead of three. The host
+	count is scoped by hostgroup only (query=hostcount has no servicegroup
+	selector); the service count by both. */
+extern json_object *json_status_totals(unsigned, hostgroup *, servicegroup *);
 extern json_object *json_status_hostlist(unsigned, int, int, int, int, host *,
 		int, host *, hostgroup *, int, unsigned, contact *, int, time_t, time_t,
 		contactgroup *, timeperiod *, timeperiod *, command *, command *,

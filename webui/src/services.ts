@@ -22,7 +22,7 @@ import { startAutoRefresh } from './refresh';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeService, scheduleServiceDowntime } from './commands';
 import { renderTotalsRow } from './statustotals';
-import { ListControls, compareText, matchesTerms, setHighlightedText } from './listcontrols';
+import { ListControls, compareText, setHighlightedText, type FilterField, type FilterQuery } from './listcontrols';
 
 /**
  * Port of cgi/status.c's show_service_detail() (the "Services" nav link,
@@ -93,6 +93,14 @@ function matchesProblemFilter(
 	const host = hostStatus[entry.hostName];
 	return !host || host.status === 'up' || host.status === 'pending';
 }
+
+/** Columns the filter box can address as `name:value` (see listcontrols.ts's FilterQuery). */
+const FILTER_FIELDS: FilterField[] = [
+	{ name: 'host', help: 'host name' },
+	{ name: 'service', aliases: ['svc'], help: 'service description' },
+	{ name: 'status', prefix: true, help: 'status, from the start (status:c = CRITICAL)' },
+	{ name: 'output', help: 'status information' },
+];
 
 type SortKey = 'host' | 'service' | 'status' | 'lastCheck' | 'duration' | 'attempt' | 'info';
 type SortDirection = 'asc' | 'desc';
@@ -224,7 +232,7 @@ function renderHostGroupCell(
 	hostStatus: HostFlagStatus | undefined,
 	hostObj: HostObjectDetails | undefined,
 	zebraOdd: boolean,
-	terms: string[],
+	filter: FilterQuery,
 ): HTMLTableCellElement {
 	const td = document.createElement('td');
 	if (hostStatus && (hostStatus.status === 'down' || hostStatus.status === 'unreachable')) {
@@ -242,7 +250,7 @@ function renderHostGroupCell(
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoHostUrl(hostName);
-	setHighlightedText(nameLink, hostName, terms);
+	setHighlightedText(nameLink, hostName, filter.highlightFor('host'));
 	row.appendChild(nameLink);
 
 	if (hostStatus) {
@@ -292,7 +300,7 @@ function renderServiceCell(
 	entry: ServiceStatusEntry,
 	obj: ServiceObjectDetails | undefined,
 	bg: string,
-	terms: string[],
+	filter: FilterQuery,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
@@ -317,7 +325,7 @@ function renderServiceCell(
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoServiceUrl(entry.hostName, entry.description);
-	setHighlightedText(nameLink, entry.description, terms);
+	setHighlightedText(nameLink, entry.description, filter.highlightFor('service'));
 	row.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
@@ -388,7 +396,7 @@ function renderTableBody(
 	entries: ServiceStatusEntry[],
 	objects: Map<string, ServiceObjectDetails>,
 	queryTime: number,
-	terms: string[],
+	filter: FilterQuery,
 	hostStatus: Record<string, HostFlagStatus>,
 	hostObjects: Record<string, HostObjectDetails>,
 	onActionComplete: () => void,
@@ -429,16 +437,16 @@ function renderTableBody(
 		const bg = bgClass(s.status, s.problem_has_been_acknowledged, s.scheduled_downtime_depth > 0, zebraOdd);
 
 		if (isNewHostGroup) {
-			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName], zebraOdd, terms));
+			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName], zebraOdd, filter));
 		} else {
 			row.appendChild(document.createElement('td'));
 		}
 
-		row.appendChild(renderServiceCell(entry, obj, bg, terms, onActionComplete, setActionStatus));
+		row.appendChild(renderServiceCell(entry, obj, bg, filter, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[s.status];
-		setHighlightedText(statusCell, STATUS_LABEL[s.status], terms);
+		setHighlightedText(statusCell, STATUS_LABEL[s.status], filter.highlightFor('status'));
 		row.appendChild(statusCell);
 
 		if (s.status === 'ok' || s.status === 'pending') {
@@ -466,7 +474,7 @@ function renderTableBody(
 
 		const infoCell = document.createElement('td');
 		infoCell.className = bg;
-		setHighlightedText(infoCell, s.plugin_output, terms);
+		setHighlightedText(infoCell, s.plugin_output, filter.highlightFor('output'));
 		row.appendChild(infoCell);
 
 		tbody.appendChild(row);
@@ -573,17 +581,22 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		return sortedCache.entries;
 	}
 
-	let haystacks = new WeakMap<ServiceStatusEntry, string>();
-	function haystack(e: ServiceStatusEntry): string {
+	let haystacks = new WeakMap<ServiceStatusEntry, Record<string, string>>();
+	function haystack(e: ServiceStatusEntry): Record<string, string> {
 		let h = haystacks.get(e);
 		if (h === undefined) {
-			h = `${e.hostName}\n${e.description}\n${STATUS_LABEL[e.status.status]}\n${e.status.plugin_output}`.toLowerCase();
+			h = {
+				host: e.hostName.toLowerCase(),
+				service: e.description.toLowerCase(),
+				status: STATUS_LABEL[e.status.status].toLowerCase(),
+				output: e.status.plugin_output.toLowerCase(),
+			};
 			haystacks.set(e, h);
 		}
 		return h;
 	}
 
-	const controls = new ListControls('services', () => rerenderTable());
+	const controls = new ListControls('services', FILTER_FIELDS, () => rerenderTable());
 
 	function setActionStatus(msg: string): void {
 		if (actionStatusEl) {
@@ -598,8 +611,8 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 				(!memberFilter || memberFilter.has(serviceKey(e.hostName, e.description))) &&
 				matchesProblemFilter(e, problemFilter, currentHostStatus),
 		);
-		const terms = controls.terms();
-		const matched = terms.length > 0 ? scoped.filter((e) => matchesTerms(haystack(e), terms)) : scoped;
+		const filter = controls.filter();
+		const matched = filter.empty ? scoped : scoped.filter((e) => filter.matches(haystack(e)));
 		const page = controls.slice(matched);
 		if (tbody) {
 			renderTableBody(
@@ -607,7 +620,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 				page.items,
 				currentObjects,
 				currentQueryTime,
-				terms,
+				filter,
 				currentHostStatus,
 				currentHostObjects,
 				() => void load(false),
@@ -615,7 +628,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			);
 		}
 		if (heading) {
-			heading.textContent = terms.length > 0 ? `Services (${matched.length} of ${scoped.length})` : `Services (${scoped.length})`;
+			heading.textContent = filter.empty ? `Services (${scoped.length})` : `Services (${matched.length} of ${scoped.length})`;
 		}
 	}
 

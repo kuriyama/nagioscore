@@ -29,17 +29,113 @@ export function compareText(a: string, b: string): number {
 	return collator.compare(a, b);
 }
 
-/** Lower-cased, whitespace-separated terms; every term must match (AND). */
-export function parseTerms(query: string): string[] {
-	return query.toLowerCase().split(/\s+/).filter(Boolean);
+/**
+ * A column the filter box can address as `name:value`. `prefix` makes
+ * that column match from the start of its value instead of anywhere in
+ * it -- used for status, so `status:c` means CRITICAL rather than also
+ * catching unknown/unreachable/down.
+ */
+export interface FilterField {
+	name: string;
+	aliases?: string[];
+	prefix?: boolean;
+	/** Shown in the filter box's tooltip. */
+	help: string;
 }
 
-/** `haystack` must already be lower-cased (callers cache it per row). */
-export function matchesTerms(haystack: string, terms: string[]): boolean {
-	for (const t of terms) {
-		if (!haystack.includes(t)) return false;
+/** One whitespace-separated piece of the query. `field` null = any column. */
+export interface FilterClause {
+	field: string | null;
+	value: string;
+	negate: boolean;
+}
+
+/**
+ * Parsed filter box contents. Syntax (all case-insensitive, clauses ANDed):
+ *   word          any column contains "word"
+ *   "two words"   any column contains the phrase
+ *   field:word    that column contains "word" (status: matches by prefix)
+ *   -word         no column contains "word"; -field:word likewise
+ * An unknown `xxx:` prefix (e.g. a URL's "http:") is just part of a plain
+ * word, so pasting such text still works as a substring search.
+ */
+export class FilterQuery {
+	readonly clauses: FilterClause[];
+	private readonly prefixFields: Set<string>;
+
+	constructor(query: string, fields: readonly FilterField[]) {
+		const byName = new Map<string, FilterField>();
+		for (const f of fields) {
+			byName.set(f.name, f);
+			for (const a of f.aliases ?? []) byName.set(a, f);
+		}
+		this.prefixFields = new Set(fields.filter((f) => f.prefix).map((f) => f.name));
+		this.clauses = [];
+		const re = /(-?)(?:([a-z]+):)?(?:"([^"]*)"?|(\S+))/g;
+		const lower = query.toLowerCase();
+		for (let m = re.exec(lower); m !== null; m = re.exec(lower)) {
+			const negate = m[1] === '-';
+			let field: string | null = null;
+			let value = m[3] ?? m[4] ?? '';
+			if (m[2] !== undefined) {
+				const f = byName.get(m[2]);
+				if (f) field = f.name;
+				else value = `${m[2]}:${value}`;
+			}
+			// Skip clauses still being typed ("-", "host:", "-host:")
+			// instead of briefly matching everything or nothing. (The
+			// regex backtracks those into plain words "-"/"host:".)
+			if (value === '' || value === '-') continue;
+			const pending = /^-?([a-z]+):$/.exec(value);
+			if (field === null && pending && byName.has(pending[1])) continue;
+			this.clauses.push({ field, value, negate });
+		}
 	}
-	return true;
+
+	get empty(): boolean {
+		return this.clauses.length === 0;
+	}
+
+	/** `row` maps every field name to its already lower-cased text. */
+	matches(row: Record<string, string>): boolean {
+		for (const c of this.clauses) {
+			let hit: boolean;
+			if (c.field === null) {
+				hit = false;
+				for (const v of Object.values(row)) {
+					if (v.includes(c.value)) {
+						hit = true;
+						break;
+					}
+				}
+			} else {
+				const v = row[c.field] ?? '';
+				hit = this.prefixFields.has(c.field) ? v.startsWith(c.value) : v.includes(c.value);
+			}
+			if (hit === c.negate) return false;
+		}
+		return true;
+	}
+
+	/** Text to highlight in `field`'s cell: positive clauses for that field or for any field. */
+	highlightFor(field: string): string[] {
+		return this.clauses.filter((c) => !c.negate && (c.field === null || c.field === field)).map((c) => c.value);
+	}
+}
+
+function filterHelp(fields: readonly FilterField[]): string {
+	const lines = [
+		'Filter as you type (case-insensitive; space = AND):',
+		'  word            any column contains word',
+		'  "two words"     phrase',
+		'  -word           exclude',
+	];
+	for (const f of fields) {
+		const names = [f.name, ...(f.aliases ?? [])].map((n) => `${n}:`).join(' / ');
+		lines.push(`  ${names}word  ${f.help}`);
+	}
+	lines.push('Ctrl-F or / to focus (Ctrl-F again = browser find), Esc to clear, PageUp/PageDown to change page.');
+	return lines.join('\n');
 }
 
 /** Sets `el`'s text to `text`, wrapping every occurrence of any term in <mark>. */
@@ -145,11 +241,14 @@ export class ListControls {
 	private lastPageCount = 1;
 	private readonly pagers: PagerParts[] = [];
 	private readonly noun: string;
+	private readonly fields: readonly FilterField[];
+	private parsed: FilterQuery | null = null;
 	private readonly onChange: () => void;
 	private readonly onKeydown: (ev: KeyboardEvent) => void;
 
-	constructor(noun: string, onChange: () => void) {
+	constructor(noun: string, fields: readonly FilterField[], onChange: () => void) {
 		this.noun = noun;
+		this.fields = fields;
 		this.onChange = onChange;
 
 		const params = hashParams();
@@ -161,12 +260,14 @@ export class ListControls {
 		this.input = document.createElement('input');
 		this.input.type = 'search';
 		this.input.className = 'listFilter';
-		this.input.placeholder = `Filter ${noun}... (Ctrl-F, /)`;
+		this.input.placeholder = `Filter ${noun}... e.g. ${fields[0].name}:web -status:ok`;
+		this.input.title = filterHelp(fields);
 		this.input.value = this.query;
 		this.input.spellcheck = false;
 		this.input.autocomplete = 'off';
 		this.input.addEventListener('input', () => {
 			this.query = this.input.value;
+			this.parsed = null;
 			this.page = 0;
 			this.changed();
 		});
@@ -176,6 +277,7 @@ export class ListControls {
 				if (this.input.value !== '') {
 					this.input.value = '';
 					this.query = '';
+					this.parsed = null;
 					this.page = 0;
 					this.changed();
 				} else {
@@ -227,8 +329,9 @@ export class ListControls {
 		this.page = 0;
 	}
 
-	terms(): string[] {
-		return parseTerms(this.query);
+	filter(): FilterQuery {
+		if (this.parsed === null) this.parsed = new FilterQuery(this.query, this.fields);
+		return this.parsed;
 	}
 
 	/**

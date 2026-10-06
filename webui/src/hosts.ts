@@ -16,7 +16,7 @@ import { startAutoRefresh } from './refresh';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeHost, scheduleHostDowntime } from './commands';
 import { renderTotalsRow } from './statustotals';
-import { ListControls, compareText, matchesTerms, setHighlightedText } from './listcontrols';
+import { ListControls, compareText, setHighlightedText, type FilterField, type FilterQuery } from './listcontrols';
 
 /**
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
@@ -77,6 +77,14 @@ function matchesProblemFilter(status: HostStatusDetails, mode: ProblemFilterMode
 		status.checks_enabled
 	);
 }
+
+/** Columns the filter box can address as `name:value` (see listcontrols.ts's FilterQuery). */
+const FILTER_FIELDS: FilterField[] = [
+	{ name: 'host', help: 'host name' },
+	{ name: 'address', aliases: ['addr'], help: 'host address' },
+	{ name: 'status', prefix: true, help: 'status, from the start (status:d = DOWN)' },
+	{ name: 'output', help: 'status information' },
+];
 
 type SortKey = 'host' | 'status' | 'lastCheck' | 'duration' | 'info';
 type SortDirection = 'asc' | 'desc';
@@ -181,7 +189,7 @@ function renderHostCell(
 	hostName: string,
 	status: HostStatusDetails,
 	obj: HostObjectDetails | undefined,
-	terms: string[],
+	filter: FilterQuery,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
@@ -209,7 +217,7 @@ function renderHostCell(
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoHostUrl(hostName);
-	setHighlightedText(nameLink, hostName, terms);
+	setHighlightedText(nameLink, hostName, filter.highlightFor('host'));
 	if (obj?.address) {
 		nameLink.title = obj.address;
 	}
@@ -289,7 +297,7 @@ function renderTableBody(
 	entries: [string, HostStatusDetails][],
 	objects: Record<string, HostObjectDetails>,
 	queryTime: number,
-	terms: string[],
+	filter: FilterQuery,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): void {
@@ -301,11 +309,11 @@ function renderTableBody(
 		const obj = objects[hostName];
 
 		const row = document.createElement('tr');
-		row.appendChild(renderHostCell(hostName, status, obj, terms, onActionComplete, setActionStatus));
+		row.appendChild(renderHostCell(hostName, status, obj, filter, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[status.status];
-		setHighlightedText(statusCell, STATUS_LABEL[status.status], terms);
+		setHighlightedText(statusCell, STATUS_LABEL[status.status], filter.highlightFor('status'));
 		row.appendChild(statusCell);
 
 		const bg = bgClass(status.status, status.problem_has_been_acknowledged, status.scheduled_downtime_depth > 0, zebraOdd);
@@ -331,7 +339,7 @@ function renderTableBody(
 
 		const infoCell = document.createElement('td');
 		infoCell.className = bg;
-		setHighlightedText(infoCell, status.plugin_output, terms);
+		setHighlightedText(infoCell, status.plugin_output, filter.highlightFor('output'));
 		row.appendChild(infoCell);
 
 		tbody.appendChild(row);
@@ -416,19 +424,24 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		return sortedCache.entries;
 	}
 
-	// Lower-cased text the filter box searches per host, built lazily and
-	// dropped on every load.
-	const haystacks = new Map<string, string>();
-	function haystack(hostName: string, status: HostStatusDetails): string {
+	// Lower-cased per-column text the filter box searches, built lazily
+	// and dropped on every load. Keys must match FILTER_FIELDS' names.
+	const haystacks = new Map<string, Record<string, string>>();
+	function haystack(hostName: string, status: HostStatusDetails): Record<string, string> {
 		let h = haystacks.get(hostName);
 		if (h === undefined) {
-			h = `${hostName}\n${currentObjects[hostName]?.address ?? ''}\n${STATUS_LABEL[status.status]}\n${status.plugin_output}`.toLowerCase();
+			h = {
+				host: hostName.toLowerCase(),
+				address: (currentObjects[hostName]?.address ?? '').toLowerCase(),
+				status: STATUS_LABEL[status.status].toLowerCase(),
+				output: status.plugin_output.toLowerCase(),
+			};
 			haystacks.set(hostName, h);
 		}
 		return h;
 	}
 
-	const controls = new ListControls('hosts', () => rerenderTable());
+	const controls = new ListControls('hosts', FILTER_FIELDS, () => rerenderTable());
 
 	function setActionStatus(msg: string): void {
 		if (actionStatusEl) {
@@ -441,14 +454,14 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		const scoped = sortedEntries().filter(
 			([hostName, status]) => (!memberFilter || memberFilter.has(hostName)) && matchesProblemFilter(status, problemFilter),
 		);
-		const terms = controls.terms();
-		const matched = terms.length > 0 ? scoped.filter(([hostName, status]) => matchesTerms(haystack(hostName, status), terms)) : scoped;
+		const filter = controls.filter();
+		const matched = filter.empty ? scoped : scoped.filter(([hostName, status]) => filter.matches(haystack(hostName, status)));
 		const page = controls.slice(matched);
 		if (tbody) {
-			renderTableBody(tbody, page.items, currentObjects, currentQueryTime, terms, () => void load(false), setActionStatus);
+			renderTableBody(tbody, page.items, currentObjects, currentQueryTime, filter, () => void load(false), setActionStatus);
 		}
 		if (heading) {
-			heading.textContent = terms.length > 0 ? `Hosts (${matched.length} of ${scoped.length})` : `Hosts (${scoped.length})`;
+			heading.textContent = filter.empty ? `Hosts (${scoped.length})` : `Hosts (${matched.length} of ${scoped.length})`;
 		}
 	}
 

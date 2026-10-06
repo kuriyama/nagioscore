@@ -6180,6 +6180,10 @@ int xodtemplate_resolve_serviceextinfo(xodtemplate_serviceextinfo *this_servicee
 /*************** OBJECT RECOMBOBULATION FUNCTIONS *****************/
 /******************************************************************/
 
+/* see xodtemplate_add_expanded() */
+static int xodtemplate_expand_hosts_seen(objectlist **, bitmap *, bitmap *, char *, int, int);
+static int xodtemplate_expand_services_seen(objectlist **, bitmap *, bitmap *, char *, char *, int, int);
+
 /*
  * note: The cast to xodtemplate_host works for all objects because 'id'
  * is the first item of host, service and contact structs, and C
@@ -6439,6 +6443,7 @@ int xodtemplate_recombobulate_hostgroups(void) {
 	/* expand members of all hostgroups - this could be done in xodtemplate_register_hostgroup(), but we can save the CGIs some work if we do it here */
 	for(temp_hostgroup = xodtemplate_hostgroup_list; temp_hostgroup; temp_hostgroup = temp_hostgroup->next) {
 		objectlist *next, *list, *accept = NULL;
+		bitmap *seen;
 
 		/*
 		 * if the hostgroup has no accept or reject list and no group
@@ -6484,7 +6489,12 @@ int xodtemplate_recombobulate_hostgroups(void) {
 			}
 
 		/* get list of hosts in the hostgroup */
-		result = xodtemplate_expand_hosts(&accept, temp_hostgroup->reject_map, temp_hostgroup->members, temp_hostgroup->_config_file, temp_hostgroup->_start_line);
+		if(!(seen = bitmap_create(xodcount.hosts))) {
+			logit(NSLOG_CONFIG_ERROR, TRUE, "Error: Could not create expansion map for hostgroup '%s'\n", temp_hostgroup->hostgroup_name);
+			return ERROR;
+			}
+		result = xodtemplate_expand_hosts_seen(&accept, seen, temp_hostgroup->reject_map, temp_hostgroup->members, temp_hostgroup->_config_file, temp_hostgroup->_start_line);
+		bitmap_destroy(seen);
 		if(result == ERROR || (accept == NULL && bitmap_count_set_bits(temp_hostgroup->reject_map) == 0)) {
 			logit(NSLOG_CONFIG_ERROR, TRUE, "Error: Could not expand members specified in hostgroup (config file '%s', starting on line %d)\n", xodtemplate_config_file_name(temp_hostgroup->_config_file), temp_hostgroup->_start_line);
 			return ERROR;
@@ -6623,6 +6633,7 @@ int xodtemplate_recombobulate_servicegroups(void) {
 	 */
 	for(temp_servicegroup = xodtemplate_servicegroup_list; temp_servicegroup; temp_servicegroup = temp_servicegroup->next) {
 		objectlist *list, *next, *accept = NULL;
+		bitmap *seen;
 
 		if(temp_servicegroup->members == NULL && temp_servicegroup->servicegroup_members == NULL)
 			continue;
@@ -6665,7 +6676,12 @@ int xodtemplate_recombobulate_servicegroups(void) {
 			}
 
 		/* get list of service members in the servicegroup */
-		result = xodtemplate_expand_services(&accept, temp_servicegroup->reject_map, NULL, temp_servicegroup->members, temp_servicegroup->_config_file, temp_servicegroup->_start_line);
+		if(!(seen = bitmap_create(xodcount.services))) {
+			logit(NSLOG_CONFIG_ERROR, TRUE, "Error: Could not create expansion map for servicegroup '%s'\n", temp_servicegroup->servicegroup_name);
+			return ERROR;
+			}
+		result = xodtemplate_expand_services_seen(&accept, seen, temp_servicegroup->reject_map, NULL, temp_servicegroup->members, temp_servicegroup->_config_file, temp_servicegroup->_start_line);
+		bitmap_destroy(seen);
 		if(result == ERROR || (accept == NULL && bitmap_count_set_bits(temp_servicegroup->reject_map) == 0)) {
 			logit(NSLOG_CONFIG_ERROR, TRUE, "Error: Could not expand members specified in servicegroup '%s' (config file '%s', starting at line %d)\n", temp_servicegroup->servicegroup_name, xodtemplate_config_file_name(temp_servicegroup->_config_file), temp_servicegroup->_start_line);
 			return ERROR;
@@ -9443,7 +9459,28 @@ int xodtemplate_expand_hostgroups(objectlist **list, bitmap *reject_map, char *h
 
 
 /* expands hosts */
-int xodtemplate_expand_hosts(objectlist **list, bitmap *reject_map, char *hosts, int _config_file, int _start_line) {
+/*
+ * Adds an expanded host/service to `list` unless it's already there, like
+ * add_object_to_objectlist() -- but when the caller passes a `seen` bitmap
+ * (tracking exactly what's in `list`, by object id), checks it in O(1)
+ * instead of walking the whole list. The walk made expanding a group's
+ * "members" O(members^2): tens of thousands of members took seconds, on
+ * every daemon config load and every CGI request. Same result either way.
+ * (The id-cast works for both object types; see the note above
+ * _xodtemplate_add_group_member().)
+ */
+static int xodtemplate_add_expanded(objectlist **list, bitmap *seen, void *obj) {
+	xodtemplate_host *h = (xodtemplate_host *)obj;
+
+	if(seen == NULL)
+		return add_object_to_objectlist(list, obj);
+	if(bitmap_isset(seen, h->id))
+		return OK;
+	bitmap_set(seen, h->id);
+	return prepend_object_to_objectlist(list, obj);
+	}
+
+static int xodtemplate_expand_hosts_seen(objectlist **list, bitmap *seen, bitmap *reject_map, char *hosts, int _config_file, int _start_line) {
 	char *temp_ptr = NULL;
 	xodtemplate_host *temp_host = NULL;
 	regex_t preg;
@@ -9492,7 +9529,7 @@ int xodtemplate_expand_hosts(objectlist **list, bitmap *reject_map, char *hosts,
 					continue;
 
 				/* add host to list */
-				add_object_to_objectlist(list, temp_host);
+				xodtemplate_add_expanded(list, seen, temp_host);
 				}
 
 			/* free memory allocated to compiled regexp */
@@ -9517,7 +9554,7 @@ int xodtemplate_expand_hosts(objectlist **list, bitmap *reject_map, char *hosts,
 						continue;
 
 					/* add host to list */
-					add_object_to_objectlist(list, temp_host);
+					xodtemplate_add_expanded(list, seen, temp_host);
 					}
 				}
 
@@ -9538,7 +9575,7 @@ int xodtemplate_expand_hosts(objectlist **list, bitmap *reject_map, char *hosts,
 
 					/* add host to list */
 					if(!reject_item) {
-						add_object_to_objectlist(list, temp_host);
+						xodtemplate_add_expanded(list, seen, temp_host);
 						}
 					else {
 						bitmap_set(reject_map, temp_host->id);
@@ -9557,6 +9594,10 @@ int xodtemplate_expand_hosts(objectlist **list, bitmap *reject_map, char *hosts,
 		return ERROR;
 
 	return OK;
+	}
+
+int xodtemplate_expand_hosts(objectlist **list, bitmap *reject_map, char *hosts, int _config_file, int _start_line) {
+	return xodtemplate_expand_hosts_seen(list, NULL, reject_map, hosts, _config_file, _start_line);
 	}
 
 
@@ -9691,7 +9732,7 @@ int xodtemplate_expand_servicegroups(objectlist **list, bitmap *reject, char *se
 	}
 
 /* expands services (host name is not expanded) */
-int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *host_name, char *services, int _config_file, int _start_line) {
+static int xodtemplate_expand_services_seen(objectlist **list, bitmap *seen, bitmap *reject_map, char *host_name, char *services, int _config_file, int _start_line) {
 	char *service_names = NULL;
 	char *temp_ptr = NULL;
 	xodtemplate_service *temp_service = NULL;
@@ -9736,7 +9777,7 @@ int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *hos
 			strip(p2);
 
 			/* now we have arguments we can handle safely, so do that */
-			if(xodtemplate_expand_services(list, reject_map, p1, p2, _config_file, _start_line) != OK) {
+			if(xodtemplate_expand_services_seen(list, seen, reject_map, p1, p2, _config_file, _start_line) != OK) {
 				free(scopy);
 				return ERROR;
 				}
@@ -9828,7 +9869,7 @@ int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *hos
 					continue;
 
 				/* add service to the list */
-				add_object_to_objectlist(list, temp_service);
+				xodtemplate_add_expanded(list, seen, temp_service);
 				}
 
 			/* free memory allocated to compiled regexp */
@@ -9855,7 +9896,7 @@ int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *hos
 					continue;
 
 				/* add service to the list */
-				add_object_to_objectlist(list, temp_service);
+				xodtemplate_add_expanded(list, seen, temp_service);
 				}
 			}
 
@@ -9877,7 +9918,7 @@ int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *hos
 				if(reject_item == TRUE)
 					bitmap_set(reject_map, temp_service->id);
 				else
-					add_object_to_objectlist(list, temp_service);
+					xodtemplate_add_expanded(list, seen, temp_service);
 			}
 #ifndef NSCGI
 		}
@@ -9897,6 +9938,10 @@ int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *hos
 		return ERROR;
 
 	return OK;
+	}
+
+int xodtemplate_expand_services(objectlist **list, bitmap *reject_map, char *host_name, char *services, int _config_file, int _start_line) {
+	return xodtemplate_expand_services_seen(list, NULL, reject_map, host_name, services, _config_file, _start_line);
 	}
 
 /* returns a comma-delimited list of hostgroup names */

@@ -264,6 +264,101 @@ const char *check_type_name(int check_type)
 
 
 /* read all host configuration data from external source */
+#ifdef NSCGI
+/* Stable merge sort of a hostgroup's member list by host name -- the same
+	order add_host_to_hostgroup()'s sorted insertion used to produce. */
+static hostsmember *sort_hostsmember_list(hostsmember *list) {
+	hostsmember *a, *b, *slow, *fast, head, *tail;
+
+	if(list == NULL || list->next == NULL)
+		return list;
+
+	/* split in half */
+	slow = list;
+	fast = list->next;
+	while(fast != NULL && fast->next != NULL) {
+		slow = slow->next;
+		fast = fast->next->next;
+		}
+	b = slow->next;
+	slow->next = NULL;
+	a = sort_hostsmember_list(list);
+	b = sort_hostsmember_list(b);
+
+	/* merge, taking from `a` on ties to keep it stable */
+	tail = &head;
+	while(a != NULL && b != NULL) {
+		if(strcmp(b->host_name, a->host_name) < 0) {
+			tail->next = b;
+			b = b->next;
+			}
+		else {
+			tail->next = a;
+			a = a->next;
+			}
+		tail = tail->next;
+		}
+	tail->next = (a != NULL) ? a : b;
+	return head.next;
+	}
+
+static int compare_servicesmember(servicesmember *a, servicesmember *b) {
+	int result = strcmp(a->host_name, b->host_name);
+
+	return (result != 0) ? result : strcmp(a->service_description, b->service_description);
+	}
+
+/* Same as sort_hostsmember_list(), by host name then service description
+	-- add_service_to_servicegroup()'s former sorted-insertion order. */
+static servicesmember *sort_servicesmember_list(servicesmember *list) {
+	servicesmember *a, *b, *slow, *fast, head, *tail;
+
+	if(list == NULL || list->next == NULL)
+		return list;
+
+	slow = list;
+	fast = list->next;
+	while(fast != NULL && fast->next != NULL) {
+		slow = slow->next;
+		fast = fast->next->next;
+		}
+	b = slow->next;
+	slow->next = NULL;
+	a = sort_servicesmember_list(list);
+	b = sort_servicesmember_list(b);
+
+	tail = &head;
+	while(a != NULL && b != NULL) {
+		if(compare_servicesmember(b, a) < 0) {
+			tail->next = b;
+			b = b->next;
+			}
+		else {
+			tail->next = a;
+			a = a->next;
+			}
+		tail = tail->next;
+		}
+	tail->next = (a != NULL) ? a : b;
+	return head.next;
+	}
+
+/* See add_host_to_hostgroup()'s NSCGI branch. Members were prepended in
+	load order; a group never lists the same host/service twice (members
+	are deduplicated through xodtemplate's bitmaps first), so there are no
+	equal keys whose relative order could differ from what sorted
+	insertion produced. */
+void sort_group_members(void) {
+	hostgroup *temp_hostgroup;
+	servicegroup *temp_servicegroup;
+
+	for(temp_hostgroup = hostgroup_list; temp_hostgroup != NULL; temp_hostgroup = temp_hostgroup->next)
+		temp_hostgroup->members = sort_hostsmember_list(temp_hostgroup->members);
+	for(temp_servicegroup = servicegroup_list; temp_servicegroup != NULL; temp_servicegroup = temp_servicegroup->next)
+		temp_servicegroup->members = sort_servicesmember_list(temp_servicegroup->members);
+	}
+#endif
+
 int read_object_config_data(const char *main_config_file, int options) {
 	int result = OK;
 
@@ -278,6 +373,10 @@ int read_object_config_data(const char *main_config_file, int options) {
 	/* handle any remaining config mangling */
 	post_process_object_config();
 	timing_point("Done post-processing configuration\n");
+
+#ifdef NSCGI
+	sort_group_members();
+#endif
 
 	return result;
 	}
@@ -1012,7 +1111,15 @@ hostsmember *add_host_to_hostgroup(hostgroup *temp_hostgroup, char *host_name) {
 	prepend_object_to_objectlist(&h->hostgroups_ptr, (void *)temp_hostgroup);
 
 	/* add the new member to the member list, sorted by host name */
-#ifndef NSCGI
+#ifdef NSCGI
+	/* CGIs prepend here and sort every group once after loading instead
+		(see sort_group_members()): sorted insertion into this list is
+		O(members) per call, i.e. O(members^2) per group, which dominated
+		every CGI request on an install with a few large groups. */
+	new_member->next = temp_hostgroup->members;
+	temp_hostgroup->members = new_member;
+	return new_member;
+#else
 	if(use_large_installation_tweaks == TRUE) {
 		new_member->next = temp_hostgroup->members;
 		temp_hostgroup->members = new_member;
@@ -1131,7 +1238,12 @@ servicesmember *add_service_to_servicegroup(servicegroup *temp_servicegroup, cha
 	 * service description, unless we're a large installation, in
 	 * which case insertion-sorting will take far too long
 	 */
-#ifndef NSCGI
+#ifdef NSCGI
+	/* See add_host_to_hostgroup(): CGIs sort once after loading. */
+	new_member->next = temp_servicegroup->members;
+	temp_servicegroup->members = new_member;
+	return new_member;
+#else
 	if(use_large_installation_tweaks == TRUE) {
 		new_member->next = temp_servicegroup->members;
 		temp_servicegroup->members = new_member;

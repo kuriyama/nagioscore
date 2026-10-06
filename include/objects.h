@@ -766,6 +766,9 @@ struct hostgroup *add_hostgroup(char *, char *, char *, char *, char *);						/*
 struct hostsmember *add_host_to_hostgroup(hostgroup *, char *);						/* adds a host to a hostgroup definition */
 struct servicegroup *add_servicegroup(char *, char *, char *, char *, char *);                                 /* adds a servicegroup definition */
 struct servicesmember *add_service_to_servicegroup(servicegroup *, char *, char *);                            /* adds a service to a servicegroup definition */
+#ifdef NSCGI
+void sort_group_members(void);	/* sorts every host/servicegroup's members once after a CGI loads objects */
+#endif
 struct contactgroup *add_contactgroup(char *, char *);								/* adds a contactgroup definition */
 struct contactsmember *add_contact_to_contactgroup(contactgroup *, char *);					/* adds a contact to a contact group definition */
 struct command *add_command(char *, char *);									/* adds a command definition */

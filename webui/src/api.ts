@@ -222,6 +222,35 @@ export interface HostStatusDetails {
 	check_type: CheckType;
 }
 
+/**
+ * statusjson.cgi's `fields=` (cgi/statusjson.c, sharing cgi/jsonutils.c's
+ * field_filter with objectjson.cgi): without it, details=true returns ~40
+ * fields per host/service -- long_plugin_output, perf_data, every
+ * last_time_* timestamp, latency, etc. -- none of which the webui reads.
+ * Each spec below is typed Record<keyof T, true>, so adding a field to (or
+ * removing one from) the matching interface without updating its spec is a
+ * compile error rather than a field that silently comes back undefined.
+ */
+function fieldsParam(spec: Record<string, true>): string {
+	return Object.keys(spec).join(' ');
+}
+
+const HOST_STATUS_FIELDS: Record<keyof HostStatusDetails, true> = {
+	status: true,
+	plugin_output: true,
+	last_check: true,
+	last_state_change: true,
+	notifications_enabled: true,
+	checks_enabled: true,
+	accept_passive_checks: true,
+	is_flapping: true,
+	scheduled_downtime_depth: true,
+	problem_has_been_acknowledged: true,
+	next_check: true,
+	should_be_scheduled: true,
+	check_type: true,
+};
+
 interface HostStatusListData {
 	hostlist: Record<string, HostStatusDetails>;
 }
@@ -269,16 +298,56 @@ function hostFilterParams(filter: ProblemFilterMode): Record<string, string> {
 /**
  * `filter` narrows the request server-side (see hostFilterParams) -- pass
  * 'all' (the default) when the full host list is genuinely needed (e.g.
- * services.ts's cross-reference use, or schedulingqueue.ts).
+ * schedulingqueue.ts; services.ts's cross-reference uses the lighter
+ * fetchHostFlagStatus below).
  */
 export async function fetchHostStatusDetails(filter: ProblemFilterMode = 'all'): Promise<HostStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<HostStatusListData>('statusjson.cgi', {
 		query: 'hostlist',
 		details: 'true',
 		formatoptions: 'enumerate',
+		fields: fieldsParam(HOST_STATUS_FIELDS),
 		...hostFilterParams(filter),
 	});
 	return { queryTime, hosts: data.hostlist ?? {} };
+}
+
+/**
+ * The subset of a host's status services.ts reads for its Host column
+ * (state color + ack/notification/check/flapping/downtime icons) and its
+ * "Unhandled" host-state cross-check. That page needs every host on every
+ * refresh, so it asks for just these instead of HOST_STATUS_FIELDS --
+ * notably skipping plugin_output, the largest remaining field.
+ */
+export type HostFlagStatus = Pick<
+	HostStatusDetails,
+	| 'status'
+	| 'problem_has_been_acknowledged'
+	| 'notifications_enabled'
+	| 'checks_enabled'
+	| 'accept_passive_checks'
+	| 'is_flapping'
+	| 'scheduled_downtime_depth'
+>;
+
+const HOST_FLAG_FIELDS: Record<keyof HostFlagStatus, true> = {
+	status: true,
+	problem_has_been_acknowledged: true,
+	notifications_enabled: true,
+	checks_enabled: true,
+	accept_passive_checks: true,
+	is_flapping: true,
+	scheduled_downtime_depth: true,
+};
+
+export async function fetchHostFlagStatus(): Promise<Record<string, HostFlagStatus>> {
+	const data = await fetchJson<{ hostlist: Record<string, HostFlagStatus> }>('statusjson.cgi', {
+		query: 'hostlist',
+		details: 'true',
+		formatoptions: 'enumerate',
+		fields: fieldsParam(HOST_FLAG_FIELDS),
+	});
+	return data.hostlist ?? {};
 }
 
 export interface HostObjectDetails {
@@ -337,6 +406,24 @@ export interface ServiceStatusDetails {
 	check_type: CheckType;
 }
 
+const SERVICE_STATUS_FIELDS: Record<keyof ServiceStatusDetails, true> = {
+	status: true,
+	plugin_output: true,
+	last_check: true,
+	last_state_change: true,
+	notifications_enabled: true,
+	checks_enabled: true,
+	accept_passive_checks: true,
+	is_flapping: true,
+	scheduled_downtime_depth: true,
+	problem_has_been_acknowledged: true,
+	current_attempt: true,
+	max_attempts: true,
+	next_check: true,
+	should_be_scheduled: true,
+	check_type: true,
+};
+
 /** { hostName: { serviceDescription: details } } */
 interface ServiceStatusListData {
 	servicelist: Record<string, Record<string, ServiceStatusDetails>>;
@@ -379,6 +466,7 @@ export async function fetchServiceStatusDetails(filter: ProblemFilterMode = 'all
 		query: 'servicelist',
 		details: 'true',
 		formatoptions: 'enumerate',
+		fields: fieldsParam(SERVICE_STATUS_FIELDS),
 		...serviceFilterParams(filter),
 	});
 	const services: ServiceStatusEntry[] = [];

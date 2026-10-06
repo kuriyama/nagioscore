@@ -3,7 +3,7 @@ import {
 	fetchServiceObjectDetails,
 	fetchServiceGroups,
 	fetchServiceCount,
-	fetchHostStatusDetails,
+	fetchHostFlagStatus,
 	fetchHostObjectDetails,
 	extinfoHostUrl,
 	extinfoServiceUrl,
@@ -11,7 +11,7 @@ import {
 	type ServiceObjectDetails,
 	type ServiceGroupDetails,
 	type ServiceStatusValue,
-	type HostStatusDetails,
+	type HostFlagStatus,
 	type HostObjectDetails,
 	type HostStatusValue,
 	type HostCount,
@@ -81,7 +81,7 @@ const HOST_STATUS_CLASS: Record<HostStatusValue, string> = {
 function matchesProblemFilter(
 	entry: ServiceStatusEntry,
 	mode: ProblemFilterMode,
-	hostStatus: Record<string, HostStatusDetails>,
+	hostStatus: Record<string, HostFlagStatus>,
 ): boolean {
 	if (mode === 'all') return true;
 	const s = entry.status;
@@ -219,7 +219,7 @@ function actionLink(label: string, onClick: () => void): HTMLAnchorElement {
  */
 function renderHostGroupCell(
 	hostName: string,
-	hostStatus: HostStatusDetails | undefined,
+	hostStatus: HostFlagStatus | undefined,
 	hostObj: HostObjectDetails | undefined,
 	zebraOdd: boolean,
 ): HTMLTableCellElement {
@@ -387,7 +387,7 @@ function renderTableBody(
 	sort: SortState,
 	memberFilter: Set<string> | null,
 	problemFilter: ProblemFilterMode,
-	hostStatus: Record<string, HostStatusDetails>,
+	hostStatus: Record<string, HostFlagStatus>,
 	hostObjects: Record<string, HostObjectDetails>,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
@@ -512,7 +512,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	let currentServices: ServiceStatusEntry[] = [];
 	let currentObjects: Map<string, ServiceObjectDetails> = new Map();
 	let currentGroups: ServiceGroupDetails[] = [];
-	let currentHostStatus: Record<string, HostStatusDetails> = {};
+	let currentHostStatus: Record<string, HostFlagStatus> = {};
 	let currentHostObjects: Record<string, HostObjectDetails> = {};
 	let currentQueryTime = 0;
 
@@ -654,11 +654,11 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 					fetchServiceStatusDetails(problemFilter),
 					fetchServiceObjectDetails(),
 					fetchServiceGroups(),
-					fetchHostStatusDetails(),
+					fetchHostFlagStatus(),
 					fetchHostObjectDetails(),
 				]);
 			} else {
-				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(problemFilter), fetchHostStatusDetails()]);
+				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(problemFilter), fetchHostFlagStatus()]);
 				objects = currentObjects;
 				groups = currentGroups;
 				hostObjects = currentHostObjects;
@@ -681,7 +681,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
 		currentGroups = groups;
-		currentHostStatus = hostStatusResult.hosts;
+		currentHostStatus = hostStatusResult;
 		currentHostObjects = hostObjects;
 
 		if (initial) {

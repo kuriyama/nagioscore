@@ -22,6 +22,7 @@ import { startAutoRefresh } from './refresh';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeService, scheduleServiceDowntime } from './commands';
 import { renderTotalsRow } from './statustotals';
+import { ListControls, compareText, matchesTerms, setHighlightedText } from './listcontrols';
 
 /**
  * Port of cgi/status.c's show_service_detail() (the "Services" nav link,
@@ -119,10 +120,10 @@ function compareServices(a: ServiceStatusEntry, b: ServiceStatusEntry, sort: Sor
 	let cmp: number;
 	switch (sort.key) {
 		case 'host':
-			cmp = a.hostName.localeCompare(b.hostName);
+			cmp = compareText(a.hostName, b.hostName);
 			break;
 		case 'service':
-			cmp = a.description.localeCompare(b.description);
+			cmp = compareText(a.description, b.description);
 			break;
 		case 'status':
 			cmp = STATUS_SEVERITY[a.status.status] - STATUS_SEVERITY[b.status.status];
@@ -137,11 +138,11 @@ function compareServices(a: ServiceStatusEntry, b: ServiceStatusEntry, sort: Sor
 			cmp = a.status.current_attempt - b.status.current_attempt;
 			break;
 		case 'info':
-			cmp = a.status.plugin_output.localeCompare(b.status.plugin_output);
+			cmp = compareText(a.status.plugin_output, b.status.plugin_output);
 			break;
 	}
 	if (cmp === 0) {
-		cmp = a.hostName.localeCompare(b.hostName) || a.description.localeCompare(b.description);
+		cmp = compareText(a.hostName, b.hostName) || compareText(a.description, b.description);
 	}
 	return sort.direction === 'asc' ? cmp : -cmp;
 }
@@ -223,6 +224,7 @@ function renderHostGroupCell(
 	hostStatus: HostFlagStatus | undefined,
 	hostObj: HostObjectDetails | undefined,
 	zebraOdd: boolean,
+	terms: string[],
 ): HTMLTableCellElement {
 	const td = document.createElement('td');
 	if (hostStatus && (hostStatus.status === 'down' || hostStatus.status === 'unreachable')) {
@@ -240,7 +242,7 @@ function renderHostGroupCell(
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoHostUrl(hostName);
-	nameLink.textContent = hostName;
+	setHighlightedText(nameLink, hostName, terms);
 	row.appendChild(nameLink);
 
 	if (hostStatus) {
@@ -290,6 +292,7 @@ function renderServiceCell(
 	entry: ServiceStatusEntry,
 	obj: ServiceObjectDetails | undefined,
 	bg: string,
+	terms: string[],
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
@@ -314,7 +317,7 @@ function renderServiceCell(
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoServiceUrl(entry.hostName, entry.description);
-	nameLink.textContent = entry.description;
+	setHighlightedText(nameLink, entry.description, terms);
 	row.appendChild(nameLink);
 
 	const iconLine = document.createElement('div');
@@ -382,22 +385,16 @@ function renderServiceCell(
 
 function renderTableBody(
 	tbody: HTMLTableSectionElement,
-	services: ServiceStatusEntry[],
+	entries: ServiceStatusEntry[],
 	objects: Map<string, ServiceObjectDetails>,
 	queryTime: number,
-	sort: SortState,
-	memberFilter: Set<string> | null,
-	problemFilter: ProblemFilterMode,
+	terms: string[],
 	hostStatus: Record<string, HostFlagStatus>,
 	hostObjects: Record<string, HostObjectDetails>,
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): void {
 	tbody.innerHTML = '';
-
-	let entries = memberFilter ? services.filter((e) => memberFilter.has(serviceKey(e.hostName, e.description))) : services;
-	entries = entries.filter((e) => matchesProblemFilter(e, problemFilter, hostStatus));
-	entries = [...entries].sort((a, b) => compareServices(a, b, sort));
 
 	let zebraOdd = false;
 	// Tracks whether the current row starts a new run of same-host rows,
@@ -432,16 +429,16 @@ function renderTableBody(
 		const bg = bgClass(s.status, s.problem_has_been_acknowledged, s.scheduled_downtime_depth > 0, zebraOdd);
 
 		if (isNewHostGroup) {
-			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName], zebraOdd));
+			row.appendChild(renderHostGroupCell(entry.hostName, hostStatus[entry.hostName], hostObjects[entry.hostName], zebraOdd, terms));
 		} else {
 			row.appendChild(document.createElement('td'));
 		}
 
-		row.appendChild(renderServiceCell(entry, obj, bg, onActionComplete, setActionStatus));
+		row.appendChild(renderServiceCell(entry, obj, bg, terms, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[s.status];
-		statusCell.textContent = STATUS_LABEL[s.status];
+		setHighlightedText(statusCell, STATUS_LABEL[s.status], terms);
 		row.appendChild(statusCell);
 
 		if (s.status === 'ok' || s.status === 'pending') {
@@ -469,7 +466,7 @@ function renderTableBody(
 
 		const infoCell = document.createElement('td');
 		infoCell.className = bg;
-		infoCell.textContent = s.plugin_output;
+		setHighlightedText(infoCell, s.plugin_output, terms);
 		row.appendChild(infoCell);
 
 		tbody.appendChild(row);
@@ -565,14 +562,28 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		return count;
 	}
 
-	function currentlyDisplayedCount(): number {
-		const memberFilter = currentMemberFilter();
-		return currentServices.filter(
-			(e) =>
-				(!memberFilter || memberFilter.has(serviceKey(e.hostName, e.description))) &&
-				matchesProblemFilter(e, problemFilter, currentHostStatus),
-		).length;
+	// See hosts.ts's matching sortedEntries()/haystack().
+	let dataVersion = 0;
+	let sortedCache: { key: string; entries: ServiceStatusEntry[] } | null = null;
+	function sortedEntries(): ServiceStatusEntry[] {
+		const key = `${dataVersion}|${sort.key}|${sort.direction}`;
+		if (sortedCache?.key !== key) {
+			sortedCache = { key, entries: [...currentServices].sort((a, b) => compareServices(a, b, sort)) };
+		}
+		return sortedCache.entries;
 	}
+
+	let haystacks = new WeakMap<ServiceStatusEntry, string>();
+	function haystack(e: ServiceStatusEntry): string {
+		let h = haystacks.get(e);
+		if (h === undefined) {
+			h = `${e.hostName}\n${e.description}\n${STATUS_LABEL[e.status.status]}\n${e.status.plugin_output}`.toLowerCase();
+			haystacks.set(e, h);
+		}
+		return h;
+	}
+
+	const controls = new ListControls('services', () => rerenderTable());
 
 	function setActionStatus(msg: string): void {
 		if (actionStatusEl) {
@@ -581,15 +592,22 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	}
 
 	function rerenderTable(): void {
+		const memberFilter = currentMemberFilter();
+		const scoped = sortedEntries().filter(
+			(e) =>
+				(!memberFilter || memberFilter.has(serviceKey(e.hostName, e.description))) &&
+				matchesProblemFilter(e, problemFilter, currentHostStatus),
+		);
+		const terms = controls.terms();
+		const matched = terms.length > 0 ? scoped.filter((e) => matchesTerms(haystack(e), terms)) : scoped;
+		const page = controls.slice(matched);
 		if (tbody) {
 			renderTableBody(
 				tbody,
-				currentServices,
+				page.items,
 				currentObjects,
 				currentQueryTime,
-				sort,
-				currentMemberFilter(),
-				problemFilter,
+				terms,
 				currentHostStatus,
 				currentHostObjects,
 				() => void load(false),
@@ -597,7 +615,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			);
 		}
 		if (heading) {
-			heading.textContent = `Services (${currentlyDisplayedCount()})`;
+			heading.textContent = terms.length > 0 ? `Services (${matched.length} of ${scoped.length})` : `Services (${scoped.length})`;
 		}
 	}
 
@@ -685,6 +703,8 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		if (!initial && seq !== loadSeq) return;
 
 		currentServices = statusResult.services;
+		dataVersion++;
+		haystacks = new WeakMap();
 		currentServiceTotals = statusResult.totals?.service ?? null;
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
@@ -709,6 +729,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			groupSelect = document.createElement('select');
 			groupSelect.addEventListener('change', () => {
 				selectedGroup = groupSelect!.value || null;
+				controls.resetPage();
 				void load(false);
 			});
 			label.appendChild(groupSelect);
@@ -732,6 +753,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			problemSelect.value = problemFilter;
 			problemSelect.addEventListener('change', () => {
 				problemFilter = problemSelect!.value as ProblemFilterMode;
+				controls.resetPage();
 				// Refetch (not just rerenderTable) so switching to
 				// Problems/Unhandled actually narrows the request server-side
 				// instead of re-filtering the already-fetched full dataset.
@@ -740,11 +762,16 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			problemLabel.appendChild(problemSelect);
 			filterBar.appendChild(problemLabel);
 
+			filterBar.appendChild(document.createTextNode(' '));
+			filterBar.appendChild(controls.input);
+
 			container.appendChild(filterBar);
 
 			actionStatusEl = document.createElement('div');
 			actionStatusEl.id = 'detailActionStatus';
 			container.appendChild(actionStatusEl);
+
+			container.appendChild(controls.topPager);
 
 			const table = document.createElement('table');
 			table.className = 'status';
@@ -763,6 +790,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 						sort.direction = 'asc';
 					}
 					updateHeaderLabels();
+					controls.resetPage();
 					rerenderTable();
 				});
 				headRow.appendChild(th);
@@ -774,6 +802,8 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			tbody = document.createElement('tbody');
 			table.appendChild(tbody);
 			container.appendChild(table);
+
+			container.appendChild(controls.bottomPager);
 
 			updateHeaderLabels();
 		}
@@ -789,5 +819,8 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 
 	void load(true);
 
-	return () => refresher.stop();
+	return () => {
+		controls.destroy();
+		refresher.stop();
+	};
 }

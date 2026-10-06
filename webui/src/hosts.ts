@@ -16,6 +16,7 @@ import { startAutoRefresh } from './refresh';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeHost, scheduleHostDowntime } from './commands';
 import { renderTotalsRow } from './statustotals';
+import { ListControls, compareText, matchesTerms, setHighlightedText } from './listcontrols';
 
 /**
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
@@ -101,7 +102,7 @@ function compareHosts(
 	let cmp: number;
 	switch (sort.key) {
 		case 'host':
-			cmp = nameA.localeCompare(nameB);
+			cmp = compareText(nameA, nameB);
 			break;
 		case 'status':
 			cmp = STATUS_SEVERITY[statusA.status] - STATUS_SEVERITY[statusB.status];
@@ -113,11 +114,11 @@ function compareHosts(
 			cmp = statusA.last_state_change - statusB.last_state_change;
 			break;
 		case 'info':
-			cmp = statusA.plugin_output.localeCompare(statusB.plugin_output);
+			cmp = compareText(statusA.plugin_output, statusB.plugin_output);
 			break;
 	}
 	if (cmp === 0) {
-		cmp = nameA.localeCompare(nameB);
+		cmp = compareText(nameA, nameB);
 	}
 	return sort.direction === 'asc' ? cmp : -cmp;
 }
@@ -180,6 +181,7 @@ function renderHostCell(
 	hostName: string,
 	status: HostStatusDetails,
 	obj: HostObjectDetails | undefined,
+	terms: string[],
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): HTMLTableCellElement {
@@ -207,7 +209,7 @@ function renderHostCell(
 
 	const nameLink = document.createElement('a');
 	nameLink.href = extinfoHostUrl(hostName);
-	nameLink.textContent = hostName;
+	setHighlightedText(nameLink, hostName, terms);
 	if (obj?.address) {
 		nameLink.title = obj.address;
 	}
@@ -284,23 +286,14 @@ function renderHostCell(
 
 function renderTableBody(
 	tbody: HTMLTableSectionElement,
-	hosts: Record<string, HostStatusDetails>,
+	entries: [string, HostStatusDetails][],
 	objects: Record<string, HostObjectDetails>,
 	queryTime: number,
-	sort: SortState,
-	memberFilter: Set<string> | null,
-	problemFilter: ProblemFilterMode,
+	terms: string[],
 	onActionComplete: () => void,
 	setActionStatus: (msg: string) => void,
 ): void {
 	tbody.innerHTML = '';
-
-	let entries = Object.entries(hosts);
-	if (memberFilter) {
-		entries = entries.filter(([hostName]) => memberFilter.has(hostName));
-	}
-	entries = entries.filter(([, status]) => matchesProblemFilter(status, problemFilter));
-	entries = entries.sort((a, b) => compareHosts(a, b, sort));
 
 	let zebraOdd = false;
 
@@ -308,11 +301,11 @@ function renderTableBody(
 		const obj = objects[hostName];
 
 		const row = document.createElement('tr');
-		row.appendChild(renderHostCell(hostName, status, obj, onActionComplete, setActionStatus));
+		row.appendChild(renderHostCell(hostName, status, obj, terms, onActionComplete, setActionStatus));
 
 		const statusCell = document.createElement('td');
 		statusCell.className = STATUS_CLASS[status.status];
-		statusCell.textContent = STATUS_LABEL[status.status];
+		setHighlightedText(statusCell, STATUS_LABEL[status.status], terms);
 		row.appendChild(statusCell);
 
 		const bg = bgClass(status.status, status.problem_has_been_acknowledged, status.scheduled_downtime_depth > 0, zebraOdd);
@@ -338,7 +331,7 @@ function renderTableBody(
 
 		const infoCell = document.createElement('td');
 		infoCell.className = bg;
-		infoCell.textContent = status.plugin_output;
+		setHighlightedText(infoCell, status.plugin_output, terms);
 		row.appendChild(infoCell);
 
 		tbody.appendChild(row);
@@ -410,12 +403,32 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		totalsContainer.appendChild(renderTotalsRow(currentTotals));
 	}
 
-	function currentlyDisplayedCount(): number {
-		const memberFilter = currentMemberFilter();
-		return Object.entries(currentHosts).filter(
-			([hostName, status]) => (!memberFilter || memberFilter.has(hostName)) && matchesProblemFilter(status, problemFilter),
-		).length;
+	// Sorting tens of thousands of rows is the expensive step, so it's done
+	// once per data load or sort change and reused for every keystroke in
+	// the filter box (filtering keeps the sorted order).
+	let dataVersion = 0;
+	let sortedCache: { key: string; entries: [string, HostStatusDetails][] } | null = null;
+	function sortedEntries(): [string, HostStatusDetails][] {
+		const key = `${dataVersion}|${sort.key}|${sort.direction}`;
+		if (sortedCache?.key !== key) {
+			sortedCache = { key, entries: Object.entries(currentHosts).sort((a, b) => compareHosts(a, b, sort)) };
+		}
+		return sortedCache.entries;
 	}
+
+	// Lower-cased text the filter box searches per host, built lazily and
+	// dropped on every load.
+	const haystacks = new Map<string, string>();
+	function haystack(hostName: string, status: HostStatusDetails): string {
+		let h = haystacks.get(hostName);
+		if (h === undefined) {
+			h = `${hostName}\n${currentObjects[hostName]?.address ?? ''}\n${STATUS_LABEL[status.status]}\n${status.plugin_output}`.toLowerCase();
+			haystacks.set(hostName, h);
+		}
+		return h;
+	}
+
+	const controls = new ListControls('hosts', () => rerenderTable());
 
 	function setActionStatus(msg: string): void {
 		if (actionStatusEl) {
@@ -424,21 +437,18 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 	}
 
 	function rerenderTable(): void {
+		const memberFilter = currentMemberFilter();
+		const scoped = sortedEntries().filter(
+			([hostName, status]) => (!memberFilter || memberFilter.has(hostName)) && matchesProblemFilter(status, problemFilter),
+		);
+		const terms = controls.terms();
+		const matched = terms.length > 0 ? scoped.filter(([hostName, status]) => matchesTerms(haystack(hostName, status), terms)) : scoped;
+		const page = controls.slice(matched);
 		if (tbody) {
-			renderTableBody(
-				tbody,
-				currentHosts,
-				currentObjects,
-				currentQueryTime,
-				sort,
-				currentMemberFilter(),
-				problemFilter,
-				() => void load(false),
-				setActionStatus,
-			);
+			renderTableBody(tbody, page.items, currentObjects, currentQueryTime, terms, () => void load(false), setActionStatus);
 		}
 		if (heading) {
-			heading.textContent = `Hosts (${currentlyDisplayedCount()})`;
+			heading.textContent = terms.length > 0 ? `Hosts (${matched.length} of ${scoped.length})` : `Hosts (${scoped.length})`;
 		}
 	}
 
@@ -517,6 +527,8 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		if (!initial && seq !== loadSeq) return;
 
 		currentHosts = statusResult.hosts;
+		dataVersion++;
+		haystacks.clear();
 		currentTotals = statusResult.totals;
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
@@ -539,6 +551,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			groupSelect = document.createElement('select');
 			groupSelect.addEventListener('change', () => {
 				selectedGroup = groupSelect!.value || null;
+				controls.resetPage();
 				void load(false);
 			});
 			label.appendChild(groupSelect);
@@ -562,6 +575,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			problemSelect.value = problemFilter;
 			problemSelect.addEventListener('change', () => {
 				problemFilter = problemSelect!.value as ProblemFilterMode;
+				controls.resetPage();
 				// Refetch (not just rerenderTable) so switching to
 				// Problems/Unhandled actually narrows the request server-side
 				// instead of re-filtering the already-fetched full dataset.
@@ -570,11 +584,16 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			problemLabel.appendChild(problemSelect);
 			filterBar.appendChild(problemLabel);
 
+			filterBar.appendChild(document.createTextNode(' '));
+			filterBar.appendChild(controls.input);
+
 			container.appendChild(filterBar);
 
 			actionStatusEl = document.createElement('div');
 			actionStatusEl.id = 'detailActionStatus';
 			container.appendChild(actionStatusEl);
+
+			container.appendChild(controls.topPager);
 
 			const table = document.createElement('table');
 			table.className = 'status';
@@ -593,6 +612,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 						sort.direction = 'asc';
 					}
 					updateHeaderLabels();
+					controls.resetPage();
 					rerenderTable();
 				});
 				headRow.appendChild(th);
@@ -604,6 +624,8 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			tbody = document.createElement('tbody');
 			table.appendChild(tbody);
 			container.appendChild(table);
+
+			container.appendChild(controls.bottomPager);
 
 			updateHeaderLabels();
 		}
@@ -619,5 +641,8 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 
 	void load(true);
 
-	return () => refresher.stop();
+	return () => {
+		controls.destroy();
+		refresher.stop();
+	};
 }

@@ -213,3 +213,41 @@ table.status td {
 	gap: 6px 40px;
 	margin-bottom: 6px;
 	}
+
+/* webui/src/listcontrols.ts: instant filter box and pagers on the Hosts/
+   Services detail tables (trial). */
+input.listFilter {
+	width: 22em;
+	font-size: 9pt;
+	padding: 1px 4px;
+	}
+
+.listPager {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 16px;
+	font-size: 9pt;
+	margin: 4px 0;
+	}
+
+.listPagerNav button {
+	font-size: 9pt;
+	min-width: 2em;
+	padding: 0 4px;
+	}
+
+input.listPagerPage {
+	width: 4em;
+	font-size: 9pt;
+	}
+
+.listPagerSize select {
+	font-size: 9pt;
+	}
+
+table.status mark {
+	background-color: #ffe866;
+	color: inherit;
+	padding: 0;
+	}

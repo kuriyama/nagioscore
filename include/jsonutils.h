@@ -219,5 +219,53 @@ extern int get_query_status(const int[][2], int);
 extern char *svm_get_string_from_value(int, const string_value_mapping *);
 extern char *svm_get_description_from_value(int, const string_value_mapping *);
 
+/* Parsed form of the "fields=" cgivar (space-separated field names) used
+	by objectjson.cgi's json_object_host_details()/
+	json_object_service_details() (and statusjson.cgi's status
+	equivalents) to skip building fields nobody asked for -- see
+	field_wanted() below. Lives here rather than in objectjson.h/.c
+	because both CGIs link jsonutils.o, but only objectjson.cgi links
+	objectjson.c.
+
+	This is built once per request (by field_filter_init(), from the raw
+	cgivar string) and then reused for every host/service record, rather
+	than re-parsing the raw string on every single field_wanted() check
+	for every record: the CGI input is attacker-influenced (an
+	authenticated user's own query string, but untrusted input all the
+	same), and re-scanning an arbitrarily long string that many times
+	would let a single request make itself pathologically slow. Both the
+	amount of input examined (FIELD_FILTER_MAX_LEN) and the number of
+	tokens kept (FIELD_FILTER_MAX_TOKENS) are capped well above anything
+	a legitimate request needs -- even naming literally every field a
+	service has (the larger of the two object types, ~80 fields) comes to
+	under 2KB and under 100 tokens -- so the caps never affect a real
+	caller; they only bound how much work a hostile one can cause. */
+#define FIELD_FILTER_MAX_LEN		4096
+#define FIELD_FILTER_MAX_TOKENS		100
+
+typedef struct field_filter_struct {
+	/* TRUE if "fields=" was specified at all (even if it parsed out to
+		zero usable tokens) -- distinguishes "no filter, return
+		everything" (the pre-existing/default behavior) from "filter
+		specified but nothing in it matched" (return nothing). */
+	int		active;
+	int		count;
+	char	buf[FIELD_FILTER_MAX_LEN + 1];
+	const char *names[FIELD_FILTER_MAX_TOKENS];
+	} field_filter;
+
+extern void field_filter_init(field_filter *, const char *);
+
+/* Returns TRUE if `ff` is NULL/inactive (no restriction -- want
+	everything) or `name` is one of the field names `ff` was built from.
+	Used by json_object_host_details()/json_object_service_details() to
+	skip building (percent-escaping, sub-array walking, etc.) fields the
+	caller never asked for -- on a large install, "objectjson.cgi?query=
+	servicelist&details=true" dumps ~80 fields per service whether or not
+	the caller reads them; the webui, for example, only ever reads
+	notes_url/action_url/icon_image. See cgi/jsonutils.c's
+	field_filter_init(). */
+extern int field_wanted(const field_filter *, const char *);
+
 extern time_t compile_time(const char *, const char *);
 #endif

@@ -1417,3 +1417,54 @@ time_t compile_time(const char *date, const char *time) {
     return mktime(&t);
 }
 
+/* See include/jsonutils.h's declaration for the rationale, including why
+	this copies into a capped, fixed-size buffer and caps the number of
+	tokens kept, rather than just walking the cgivar string as given. */
+void field_filter_init(field_filter *ff, const char *fields) {
+	char *p;
+
+	ff->active = (NULL != fields);
+	ff->count = 0;
+	ff->buf[0] = '\0';
+
+	if(NULL == fields) {
+		return;
+		}
+
+	strncpy(ff->buf, fields, FIELD_FILTER_MAX_LEN);
+	ff->buf[FIELD_FILTER_MAX_LEN] = '\0';
+
+	p = ff->buf;
+	while(*p != '\0' && ff->count < FIELD_FILTER_MAX_TOKENS) {
+		while(*p == ' ') {
+			p++;
+			}
+		if(*p == '\0') {
+			break;
+			}
+		ff->names[ff->count++] = p;
+		while(*p != '\0' && *p != ' ') {
+			p++;
+			}
+		if(*p == ' ') {
+			*p = '\0';
+			p++;
+			}
+		}
+	}
+
+int field_wanted(const field_filter *ff, const char *name) {
+	int i;
+
+	if(NULL == ff || FALSE == ff->active) {
+		return TRUE;
+		}
+
+	for(i = 0; i < ff->count; i++) {
+		if(!strcmp(ff->names[i], name)) {
+			return TRUE;
+			}
+		}
+
+	return FALSE;
+	}

@@ -628,8 +628,9 @@ int main(void) {
 	if(result != RESULT_SUCCESS) {
 		json_object_append_object(json_root, "data", 
 				json_help(archive_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return result;
 		}
@@ -649,8 +650,9 @@ int main(void) {
 				get_cgi_config_location()));
 		json_object_append_object(json_root, "data", 
 				json_help(archive_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -730,8 +732,9 @@ int main(void) {
 	if((result != RESULT_SUCCESS) && (result != RESULT_OPTION_IGNORED)) {
 		json_object_append_object(json_root, "data", 
 				json_help(archive_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -965,8 +968,9 @@ int main(void) {
 		break;
 		}
 
-	json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-			cgi_data.format_options);
+	json_object_print(json_root, 0,
+			cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+			cgi_data.strftime_format, cgi_data.format_options);
 	document_footer();
 
 	/* free all allocated memory */

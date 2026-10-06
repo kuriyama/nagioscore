@@ -780,8 +780,9 @@ int main(void) {
 	result = process_cgivars(json_root, &cgi_data, query_time);
 	if(result != RESULT_SUCCESS) {
 		json_object_append_object(json_root, "data", json_help(status_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -800,8 +801,9 @@ int main(void) {
 				"Error: Could not open CGI configuration file '%s' for reading!", 
 				get_cgi_config_location()));
 		json_object_append_object(json_root, "data", json_help(status_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -817,8 +819,9 @@ int main(void) {
 				"Error: Could not open main configuration file '%s' for reading!", 
 				main_config_file));
 		json_object_append_object(json_root, "data", json_help(status_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -834,8 +837,9 @@ int main(void) {
 				(time_t)-1, NULL, RESULT_FILE_OPEN_READ_ERROR,
 				"Error: Could not read some or all object configuration data!"));
 		json_object_append_object(json_root, "data", json_help(status_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -867,8 +871,9 @@ int main(void) {
 				(time_t)-1, NULL, RESULT_FILE_OPEN_READ_ERROR,
 				"Error: Could not read host and service status information!"));
 		json_object_append_object(json_root, "data", json_help(status_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -877,8 +882,9 @@ int main(void) {
 	result = validate_arguments(json_root, &cgi_data, query_time);
 	if(result != RESULT_SUCCESS) {
 		json_object_append_object(json_root, "data", json_help(status_json_help));
-		json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-				cgi_data.format_options);
+		json_object_print(json_root, 0,
+				cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+				cgi_data.strftime_format, cgi_data.format_options);
 		document_footer();
 		return ERROR;
 		}
@@ -1186,8 +1192,9 @@ int main(void) {
 		break;
 		}
 
-	json_object_print(json_root, 0, 1, cgi_data.strftime_format, 
-			cgi_data.format_options);
+	json_object_print(json_root, 0,
+			cgi_data.format_options & JSON_FORMAT_WHITESPACE,
+			cgi_data.strftime_format, cgi_data.format_options);
 	document_footer();
 
 	/* free all allocated memory */

@@ -580,7 +580,6 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	}
 
 	function rerenderTable(): void {
-		renderTotalsPanel();
 		if (tbody) {
 			renderTableBody(
 				tbody,
@@ -696,6 +695,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			groupSelect = document.createElement('select');
 			groupSelect.addEventListener('change', () => {
 				selectedGroup = groupSelect!.value || null;
+				renderTotalsPanel();
 				rerenderTable();
 			});
 			label.appendChild(groupSelect);
@@ -773,6 +773,10 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		if (lastUpdatedEl) {
 			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(currentQueryTime)}`;
 		}
+		// Not part of rerenderTable(): the totals only depend on the group
+		// scope and fresh status data, so a sort-column click shouldn't
+		// cost another statusjson.cgi request.
+		renderTotalsPanel();
 		rerenderTable();
 	}
 

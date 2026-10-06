@@ -2,8 +2,6 @@ import {
 	fetchHostStatusDetails,
 	fetchHostObjectDetails,
 	fetchHostGroups,
-	fetchHostCount,
-	fetchServiceCount,
 	extinfoHostUrl,
 	statusCgiHostUrl,
 	type HostStatusDetails,
@@ -11,6 +9,7 @@ import {
 	type HostGroupDetails,
 	type HostStatusValue,
 	type ProblemFilterMode,
+	type StatusTotals,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
 import { promptAcknowledge, promptDowntime } from './actions';
@@ -401,21 +400,15 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 	// show_host_status_totals()/show_service_status_totals() for a hostgroup
 	// view (service totals = services on member hosts) -- unlike the table
 	// below, these boxes are NOT affected by the Problems/Unhandled Problems
-	// filter. Uses statusjson.cgi?query=hostcount/servicecount (a handful of
-	// bytes each) instead of computing this from currentHosts, since that's
-	// now whatever the Problems/Unhandled filter narrowed the main fetch to,
-	// not the true breakdown across every host in scope -- and this page
-	// never fetches service status at all.
-	let totalsRequestId = 0;
+	// filter. The numbers come back with load()'s hostlist request itself
+	// (totals=true, see api.ts's ListScope) rather than from separate
+	// hostcount/servicecount requests, since each statusjson.cgi request
+	// re-reads all of status.dat no matter how small its answer is.
+	let currentTotals: StatusTotals | null = null;
 	function renderTotalsPanel(): void {
-		if (!totalsContainer) return;
-		const requestId = ++totalsRequestId;
-		const hostgroup = selectedGroup ?? undefined;
-		void Promise.all([fetchHostCount(hostgroup), fetchServiceCount({ hostgroup })]).then(([host, service]) => {
-			if (requestId !== totalsRequestId || !totalsContainer) return;
-			totalsContainer.innerHTML = '';
-			totalsContainer.appendChild(renderTotalsRow({ host, service }));
-		});
+		if (!totalsContainer || !currentTotals) return;
+		totalsContainer.innerHTML = '';
+		totalsContainer.appendChild(renderTotalsRow(currentTotals));
 	}
 
 	function currentlyDisplayedCount(): number {
@@ -479,7 +472,16 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		}
 	}
 
+	// Group and Show: changes both refetch now, so a slow response for a
+	// previous selection could otherwise land after the current one's.
+	let loadSeq = 0;
+
 	async function load(initial: boolean): Promise<void> {
+		const seq = ++loadSeq;
+		// Host Group is applied server-side (hostgroup=) so the same request
+		// can carry that group's totals; the table's member filter below is
+		// then just a no-op safety net, like matchesProblemFilter.
+		const scope = { hostgroup: selectedGroup ?? undefined, totals: true };
 		let statusResult;
 		let objects;
 		let groups;
@@ -489,12 +491,12 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			// need to refetch them on every 90s auto-refresh tick.
 			if (initial) {
 				[statusResult, objects, groups] = await Promise.all([
-					fetchHostStatusDetails(problemFilter),
+					fetchHostStatusDetails(problemFilter, scope),
 					fetchHostObjectDetails(),
 					fetchHostGroups(),
 				]);
 			} else {
-				statusResult = await fetchHostStatusDetails(problemFilter);
+				statusResult = await fetchHostStatusDetails(problemFilter, scope);
 				objects = currentObjects;
 				groups = currentGroups;
 			}
@@ -513,7 +515,10 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			return;
 		}
 
+		if (!initial && seq !== loadSeq) return;
+
 		currentHosts = statusResult.hosts;
+		currentTotals = statusResult.totals;
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
 		currentGroups = groups;
@@ -534,8 +539,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 			groupSelect = document.createElement('select');
 			groupSelect.addEventListener('change', () => {
 				selectedGroup = groupSelect!.value || null;
-				renderTotalsPanel();
-				rerenderTable();
+				void load(false);
 			});
 			label.appendChild(groupSelect);
 			filterBar.appendChild(label);

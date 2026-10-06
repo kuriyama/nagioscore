@@ -253,11 +253,14 @@ const HOST_STATUS_FIELDS: Record<keyof HostStatusDetails, true> = {
 
 interface HostStatusListData {
 	hostlist: Record<string, HostStatusDetails>;
+	totals?: StatusTotalsData;
 }
 
 export interface HostStatusResult {
 	queryTime: number;
 	hosts: Record<string, HostStatusDetails>;
+	/** Only when requested via ListScope.totals. */
+	totals: StatusTotals | null;
 }
 
 /**
@@ -301,15 +304,16 @@ function hostFilterParams(filter: ProblemFilterMode): Record<string, string> {
  * schedulingqueue.ts; services.ts's cross-reference uses the lighter
  * fetchHostFlagStatus below).
  */
-export async function fetchHostStatusDetails(filter: ProblemFilterMode = 'all'): Promise<HostStatusResult> {
+export async function fetchHostStatusDetails(filter: ProblemFilterMode = 'all', scope: ListScope = {}): Promise<HostStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<HostStatusListData>('statusjson.cgi', {
 		query: 'hostlist',
 		details: 'true',
 		formatoptions: 'enumerate',
 		fields: fieldsParam(HOST_STATUS_FIELDS),
 		...hostFilterParams(filter),
+		...listScopeParams(scope),
 	});
-	return { queryTime, hosts: data.hostlist ?? {} };
+	return { queryTime, hosts: data.hostlist ?? {}, totals: toStatusTotals(data.totals) };
 }
 
 /**
@@ -427,6 +431,7 @@ const SERVICE_STATUS_FIELDS: Record<keyof ServiceStatusDetails, true> = {
 /** { hostName: { serviceDescription: details } } */
 interface ServiceStatusListData {
 	servicelist: Record<string, Record<string, ServiceStatusDetails>>;
+	totals?: StatusTotalsData;
 }
 
 export interface ServiceStatusEntry {
@@ -438,6 +443,8 @@ export interface ServiceStatusEntry {
 export interface ServiceStatusResult {
 	queryTime: number;
 	services: ServiceStatusEntry[];
+	/** Only when requested via ListScope.totals. */
+	totals: StatusTotals | null;
 }
 
 /**
@@ -461,13 +468,14 @@ function serviceFilterParams(filter: ProblemFilterMode): Record<string, string> 
 }
 
 /** See fetchHostStatusDetails's comment -- same bug, same fix, for "status". */
-export async function fetchServiceStatusDetails(filter: ProblemFilterMode = 'all'): Promise<ServiceStatusResult> {
+export async function fetchServiceStatusDetails(filter: ProblemFilterMode = 'all', scope: ListScope = {}): Promise<ServiceStatusResult> {
 	const { data, queryTime } = await fetchJsonWithResult<ServiceStatusListData>('statusjson.cgi', {
 		query: 'servicelist',
 		details: 'true',
 		formatoptions: 'enumerate',
 		fields: fieldsParam(SERVICE_STATUS_FIELDS),
 		...serviceFilterParams(filter),
+		...listScopeParams(scope),
 	});
 	const services: ServiceStatusEntry[] = [];
 	for (const [hostName, byDescription] of Object.entries(data.servicelist ?? {})) {
@@ -475,7 +483,7 @@ export async function fetchServiceStatusDetails(filter: ProblemFilterMode = 'all
 			services.push({ hostName, description, status });
 		}
 	}
-	return { queryTime, services };
+	return { queryTime, services, totals: toStatusTotals(data.totals) };
 }
 
 export interface ServiceObjectDetails {
@@ -639,23 +647,6 @@ export interface HostCount {
 	pending: number;
 }
 
-interface HostCountData {
-	count: Partial<HostCount>;
-}
-
-/**
- * statusjson.cgi?query=hostcount: a few bytes back instead of hostlist's
- * full per-host detail, used for hosts.ts's "Host Status Totals" panel
- * instead of computing it by scanning whatever (possibly Problems/
- * Unhandled-filtered) set fetchHostStatusDetails() currently returned --
- * the totals panel always needs the true breakdown across every host in
- * the group scope, independent of the table's own filter.
- */
-export async function fetchHostCount(hostgroup?: string): Promise<HostCount> {
-	const data = await fetchJson<HostCountData>('statusjson.cgi', hostgroup ? { query: 'hostcount', hostgroup } : { query: 'hostcount' });
-	return { up: data.count.up ?? 0, down: data.count.down ?? 0, unreachable: data.count.unreachable ?? 0, pending: data.count.pending ?? 0 };
-}
-
 export interface ServiceCount {
 	ok: number;
 	warning: number;
@@ -664,29 +655,52 @@ export interface ServiceCount {
 	pending: number;
 }
 
-interface ServiceCountData {
-	count: Partial<ServiceCount>;
+/** The "Host/Service Status Totals" panels' numbers -- see listScopeParams. */
+export interface StatusTotals {
+	host: HostCount;
+	service: ServiceCount;
+}
+
+/** cgi/statusjson.c's json_status_totals(): the hostcount/servicecount
+    query results, nested as-is. */
+interface StatusTotalsData {
+	hostcount: { count: Partial<HostCount> };
+	servicecount: { count: Partial<ServiceCount> };
+}
+
+function toStatusTotals(data: StatusTotalsData | undefined): StatusTotals | null {
+	if (!data) return null;
+	const h = data.hostcount.count;
+	const sv = data.servicecount.count;
+	return {
+		host: { up: h.up ?? 0, down: h.down ?? 0, unreachable: h.unreachable ?? 0, pending: h.pending ?? 0 },
+		service: { ok: sv.ok ?? 0, warning: sv.warning ?? 0, unknown: sv.unknown ?? 0, critical: sv.critical ?? 0, pending: sv.pending ?? 0 },
+	};
 }
 
 /**
- * See fetchHostCount -- same idea, for the "Service Status Totals" panel.
- * `hostgroup` is for hosts.ts's Host Group scope: cgi/statusjson.c's
- * json_status_servicecount() counts only services on member hosts, the
- * same scoping cgi/status.c's show_service_status_totals() uses for a
- * hostgroup view.
+ * Group scope for a hostlist/servicelist fetch, plus totals=true: every
+ * statusjson.cgi request re-reads objects.cache and status.dat from scratch
+ * (seconds, on a large install, regardless of how small the answer is), so
+ * the totals panels ride along on the list request that's being made anyway
+ * instead of costing separate hostcount/servicecount requests. Server-side,
+ * the totals are scoped by hostgroup/servicegroup only -- the list's own
+ * Problems/Unhandled filter never applies to them, matching cgi/status.c's
+ * show_host_status_totals()/show_service_status_totals() -- and the host
+ * count ignores servicegroup (query=hostcount has no such selector).
  */
-export async function fetchServiceCount(scope: { servicegroup?: string; hostgroup?: string } = {}): Promise<ServiceCount> {
-	const params: Record<string, string> = { query: 'servicecount' };
-	if (scope.servicegroup) params.servicegroup = scope.servicegroup;
+export interface ListScope {
+	hostgroup?: string;
+	servicegroup?: string;
+	totals?: boolean;
+}
+
+function listScopeParams(scope: ListScope): Record<string, string> {
+	const params: Record<string, string> = {};
 	if (scope.hostgroup) params.hostgroup = scope.hostgroup;
-	const data = await fetchJson<ServiceCountData>('statusjson.cgi', params);
-	return {
-		ok: data.count.ok ?? 0,
-		warning: data.count.warning ?? 0,
-		unknown: data.count.unknown ?? 0,
-		critical: data.count.critical ?? 0,
-		pending: data.count.pending ?? 0,
-	};
+	if (scope.servicegroup) params.servicegroup = scope.servicegroup;
+	if (scope.totals) params.totals = 'true';
+	return params;
 }
 
 export function statusCgiHostUrl(hostName: string): string {

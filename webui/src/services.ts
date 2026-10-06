@@ -2,7 +2,6 @@ import {
 	fetchServiceStatusDetails,
 	fetchServiceObjectDetails,
 	fetchServiceGroups,
-	fetchServiceCount,
 	fetchHostFlagStatus,
 	fetchHostObjectDetails,
 	extinfoHostUrl,
@@ -15,6 +14,7 @@ import {
 	type HostObjectDetails,
 	type HostStatusValue,
 	type HostCount,
+	type ServiceCount,
 	type ProblemFilterMode,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
@@ -537,22 +537,19 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 	// servicegroup view (host totals = hosts with at least one member
 	// service, i.e. is_host_member_of_servicegroup()) -- unlike the table
 	// below, these boxes are NOT affected by the Problems/Unhandled Problems
-	// filter. Service totals use statusjson.cgi?query=servicecount (a
-	// handful of bytes) instead of computing this from currentServices,
-	// since that's now whatever the Problems/Unhandled filter narrowed the
-	// main fetch to. Host totals need no request at all: load() already
-	// fetches every host's status unfiltered (currentHostStatus, for the
-	// host column), and statusjson.cgi's hostcount can't scope by
-	// servicegroup anyway.
-	let totalsRequestId = 0;
+	// filter. Service totals come back with load()'s servicelist request
+	// itself (totals=true, see api.ts's ListScope) rather than a separate
+	// servicecount request, since each statusjson.cgi request re-reads all
+	// of status.dat no matter how small its answer is. Host totals are
+	// counted here instead of using that response's hostcount: load()
+	// already fetches every host's status unfiltered (currentHostStatus,
+	// for the host column), and statusjson.cgi's hostcount can't scope by
+	// servicegroup.
+	let currentServiceTotals: ServiceCount | null = null;
 	function renderTotalsPanel(): void {
-		if (!totalsContainer) return;
-		const requestId = ++totalsRequestId;
-		void fetchServiceCount({ servicegroup: selectedGroup ?? undefined }).then((service) => {
-			if (requestId !== totalsRequestId || !totalsContainer) return;
-			totalsContainer.innerHTML = '';
-			totalsContainer.appendChild(renderTotalsRow({ host: countHosts(), service }));
-		});
+		if (!totalsContainer || !currentServiceTotals) return;
+		totalsContainer.innerHTML = '';
+		totalsContainer.appendChild(renderTotalsRow({ host: countHosts(), service: currentServiceTotals }));
 	}
 
 	function countHosts(): HostCount {
@@ -633,7 +630,16 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		}
 	}
 
+	// Group and Show: changes both refetch now, so a slow response for a
+	// previous selection could otherwise land after the current one's.
+	let loadSeq = 0;
+
 	async function load(initial: boolean): Promise<void> {
+		const seq = ++loadSeq;
+		// Service Group is applied server-side (servicegroup=) so the same
+		// request can carry that group's totals; the table's member filter
+		// is then just a no-op safety net, like matchesProblemFilter.
+		const scope = { servicegroup: selectedGroup ?? undefined, totals: true };
 		let statusResult;
 		let objects;
 		let groups;
@@ -651,14 +657,14 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			// the host object details used by the collapsed host-group cell.
 			if (initial) {
 				[statusResult, objects, groups, hostStatusResult, hostObjects] = await Promise.all([
-					fetchServiceStatusDetails(problemFilter),
+					fetchServiceStatusDetails(problemFilter, scope),
 					fetchServiceObjectDetails(),
 					fetchServiceGroups(),
 					fetchHostFlagStatus(),
 					fetchHostObjectDetails(),
 				]);
 			} else {
-				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(problemFilter), fetchHostFlagStatus()]);
+				[statusResult, hostStatusResult] = await Promise.all([fetchServiceStatusDetails(problemFilter, scope), fetchHostFlagStatus()]);
 				objects = currentObjects;
 				groups = currentGroups;
 				hostObjects = currentHostObjects;
@@ -677,7 +683,10 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			return;
 		}
 
+		if (!initial && seq !== loadSeq) return;
+
 		currentServices = statusResult.services;
+		currentServiceTotals = statusResult.totals?.service ?? null;
 		currentQueryTime = statusResult.queryTime;
 		currentObjects = objects;
 		currentGroups = groups;
@@ -700,8 +709,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 			groupSelect = document.createElement('select');
 			groupSelect.addEventListener('change', () => {
 				selectedGroup = groupSelect!.value || null;
-				renderTotalsPanel();
-				rerenderTable();
+				void load(false);
 			});
 			label.appendChild(groupSelect);
 			filterBar.appendChild(label);

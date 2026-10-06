@@ -3,6 +3,7 @@ import {
 	fetchHostObjectDetails,
 	fetchHostGroups,
 	fetchHostCount,
+	fetchServiceCount,
 	extinfoHostUrl,
 	statusCgiHostUrl,
 	type HostStatusDetails,
@@ -14,7 +15,7 @@ import {
 import { formatDuration, formatTimestamp } from './format';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeHost, scheduleHostDowntime } from './commands';
-import { renderStatusTotals } from './statustotals';
+import { renderTotalsRow } from './statustotals';
 
 /**
  * Port of cgi/status.c's show_host_detail() (style=hostdetail): one row per
@@ -396,33 +397,24 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		return group ? new Set(group.members) : null;
 	}
 
-	// Scoped by Host Group only, matching cgi/status.c's show_host_status_totals()
-	// -- unlike the table below, this box is NOT affected by the
-	// Problems/Unhandled Problems filter. Uses statusjson.cgi?query=hostcount
-	// (a handful of bytes) instead of computing this from currentHosts,
-	// since that's now whatever the Problems/Unhandled filter narrowed the
-	// main fetch to, not the true breakdown across every host in scope.
+	// Scoped by Host Group only, matching cgi/status.c's
+	// show_host_status_totals()/show_service_status_totals() for a hostgroup
+	// view (service totals = services on member hosts) -- unlike the table
+	// below, these boxes are NOT affected by the Problems/Unhandled Problems
+	// filter. Uses statusjson.cgi?query=hostcount/servicecount (a handful of
+	// bytes each) instead of computing this from currentHosts, since that's
+	// now whatever the Problems/Unhandled filter narrowed the main fetch to,
+	// not the true breakdown across every host in scope -- and this page
+	// never fetches service status at all.
 	let totalsRequestId = 0;
 	function renderTotalsPanel(): void {
 		if (!totalsContainer) return;
 		const requestId = ++totalsRequestId;
-		void fetchHostCount(selectedGroup ?? undefined).then((count) => {
+		const hostgroup = selectedGroup ?? undefined;
+		void Promise.all([fetchHostCount(hostgroup), fetchServiceCount({ hostgroup })]).then(([host, service]) => {
 			if (requestId !== totalsRequestId || !totalsContainer) return;
 			totalsContainer.innerHTML = '';
-			totalsContainer.appendChild(
-				renderStatusTotals(
-					'host',
-					'Host Status Totals',
-					[
-						{ label: 'Up', count: count.up, classSuffix: 'UP' },
-						{ label: 'Down', count: count.down, classSuffix: 'DOWN' },
-						{ label: 'Unreachable', count: count.unreachable, classSuffix: 'UNREACHABLE' },
-						{ label: 'Pending', count: count.pending, classSuffix: 'PENDING' },
-					],
-					count.down + count.unreachable,
-					count.up + count.down + count.unreachable + count.pending,
-				),
-			);
+			totalsContainer.appendChild(renderTotalsRow({ host, service }));
 		});
 	}
 

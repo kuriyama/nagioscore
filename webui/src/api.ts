@@ -580,9 +580,18 @@ interface ServiceCountData {
 	count: Partial<ServiceCount>;
 }
 
-/** See fetchHostCount -- same idea, for services.ts's "Service Status Totals". */
-export async function fetchServiceCount(servicegroup?: string): Promise<ServiceCount> {
-	const data = await fetchJson<ServiceCountData>('statusjson.cgi', servicegroup ? { query: 'servicecount', servicegroup } : { query: 'servicecount' });
+/**
+ * See fetchHostCount -- same idea, for the "Service Status Totals" panel.
+ * `hostgroup` is for hosts.ts's Host Group scope: cgi/statusjson.c's
+ * json_status_servicecount() counts only services on member hosts, the
+ * same scoping cgi/status.c's show_service_status_totals() uses for a
+ * hostgroup view.
+ */
+export async function fetchServiceCount(scope: { servicegroup?: string; hostgroup?: string } = {}): Promise<ServiceCount> {
+	const params: Record<string, string> = { query: 'servicecount' };
+	if (scope.servicegroup) params.servicegroup = scope.servicegroup;
+	if (scope.hostgroup) params.hostgroup = scope.hostgroup;
+	const data = await fetchJson<ServiceCountData>('statusjson.cgi', params);
 	return {
 		ok: data.count.ok ?? 0,
 		warning: data.count.warning ?? 0,

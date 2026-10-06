@@ -1,7 +1,10 @@
+import type { HostCount, ServiceCount } from './api';
+
 /**
  * Port of cgi/status.c's show_host_status_totals()/show_service_status_totals()
  * -- the "Host Status Totals"/"Service Status Totals" boxes shown above every
- * status.cgi view. Reuses html/stylesheets/status.css's existing hostTotals
+ * status.cgi view. Like upstream, both boxes appear side by side on both the
+ * Hosts and Services views (see renderTotalsRow). Reuses html/stylesheets/status.css's existing hostTotals
  * and serviceTotals classes (already loaded by index.html.in), so no new CSS
  * is needed.
  *
@@ -19,7 +22,7 @@ export interface TotalsColumn {
 	classSuffix: string;
 }
 
-export function renderStatusTotals(
+function renderStatusTotals(
 	kind: 'host' | 'service',
 	title: string,
 	columns: TotalsColumn[],
@@ -83,4 +86,44 @@ export function renderStatusTotals(
 	wrapper.appendChild(summaryTable);
 
 	return wrapper;
+}
+
+export function renderHostTotals(count: HostCount): HTMLElement {
+	return renderStatusTotals(
+		'host',
+		'Host Status Totals',
+		[
+			{ label: 'Up', count: count.up, classSuffix: 'UP' },
+			{ label: 'Down', count: count.down, classSuffix: 'DOWN' },
+			{ label: 'Unreachable', count: count.unreachable, classSuffix: 'UNREACHABLE' },
+			{ label: 'Pending', count: count.pending, classSuffix: 'PENDING' },
+		],
+		count.down + count.unreachable,
+		count.up + count.down + count.unreachable + count.pending,
+	);
+}
+
+export function renderServiceTotals(count: ServiceCount): HTMLElement {
+	return renderStatusTotals(
+		'service',
+		'Service Status Totals',
+		[
+			{ label: 'Ok', count: count.ok, classSuffix: 'OK' },
+			{ label: 'Warning', count: count.warning, classSuffix: 'WARNING' },
+			{ label: 'Unknown', count: count.unknown, classSuffix: 'UNKNOWN' },
+			{ label: 'Critical', count: count.critical, classSuffix: 'CRITICAL' },
+			{ label: 'Pending', count: count.pending, classSuffix: 'PENDING' },
+		],
+		count.warning + count.unknown + count.critical,
+		count.ok + count.warning + count.unknown + count.critical + count.pending,
+	);
+}
+
+/** Host totals left, service totals right -- upstream's middle/right columns. */
+export function renderTotalsRow(count: { host: HostCount; service: ServiceCount }): HTMLElement {
+	const row = document.createElement('div');
+	row.className = 'statusTotalsRow';
+	row.appendChild(renderHostTotals(count.host));
+	row.appendChild(renderServiceTotals(count.service));
+	return row;
 }

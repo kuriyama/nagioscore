@@ -193,3 +193,13 @@ table.status td {
 	margin-right: 4px;
 	border: 1px solid #888;
 	}
+
+/* Host/Service Status Totals side by side, as in status.cgi's top row */
+.statusTotalsRow {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	align-items: flex-start;
+	gap: 6px 40px;
+	margin-bottom: 6px;
+	}

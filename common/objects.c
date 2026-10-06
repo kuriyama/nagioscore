@@ -2332,14 +2332,23 @@ int number_of_immediate_parent_hosts(host *hst) {
 
 /*  tests whether a host is a member of a particular hostgroup */
 /* NOTE: This function is only used by the CGIS */
+/*
+ * These membership tests walk the object's own (short) list of groups --
+ * hostgroups_ptr/servicegroups_ptr, filled in by add_host_to_hostgroup()/
+ * add_service_to_servicegroup() alongside every member they add -- rather
+ * than the group's member list. The CGIs call them once per host/service
+ * when filtering by group, so walking the members made a group filter
+ * O(objects * members): tens of seconds per request with a servicegroup
+ * of tens of thousands of services. Same answers either way.
+ */
 int is_host_member_of_hostgroup(hostgroup *group, host *hst) {
-	hostsmember *temp_hostsmember = NULL;
+	objectlist *temp_objectlist = NULL;
 
 	if(group == NULL || hst == NULL)
 		return FALSE;
 
-	for(temp_hostsmember = group->members; temp_hostsmember != NULL; temp_hostsmember = temp_hostsmember->next) {
-		if(temp_hostsmember->host_ptr == hst)
+	for(temp_objectlist = hst->hostgroups_ptr; temp_objectlist != NULL; temp_objectlist = temp_objectlist->next) {
+		if(temp_objectlist->object_ptr == group)
 			return TRUE;
 		}
 
@@ -2355,8 +2364,9 @@ int is_host_member_of_servicegroup(servicegroup *group, host *hst) {
 	if(group == NULL || hst == NULL)
 		return FALSE;
 
-	for(temp_servicesmember = group->members; temp_servicesmember != NULL; temp_servicesmember = temp_servicesmember->next) {
-		if(temp_servicesmember->service_ptr != NULL && temp_servicesmember->service_ptr->host_ptr == hst)
+	/* any of this host's services (add_service_link_to_host()) in the group */
+	for(temp_servicesmember = hst->services; temp_servicesmember != NULL; temp_servicesmember = temp_servicesmember->next) {
+		if(is_service_member_of_servicegroup(group, temp_servicesmember->service_ptr) == TRUE)
 			return TRUE;
 		}
 
@@ -2367,13 +2377,13 @@ int is_host_member_of_servicegroup(servicegroup *group, host *hst) {
 /*  tests whether a service is a member of a particular servicegroup */
 /* NOTE: This function is only used by the CGIS */
 int is_service_member_of_servicegroup(servicegroup *group, service *svc) {
-	servicesmember *temp_servicesmember = NULL;
+	objectlist *temp_objectlist = NULL;
 
 	if(group == NULL || svc == NULL)
 		return FALSE;
 
-	for(temp_servicesmember = group->members; temp_servicesmember != NULL; temp_servicesmember = temp_servicesmember->next) {
-		if(temp_servicesmember->service_ptr == svc)
+	for(temp_objectlist = svc->servicegroups_ptr; temp_objectlist != NULL; temp_objectlist = temp_objectlist->next) {
+		if(temp_objectlist->object_ptr == group)
 			return TRUE;
 		}
 

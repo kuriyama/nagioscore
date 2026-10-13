@@ -14,6 +14,14 @@ import { formatTimestamp } from './format';
  * re-shown page refreshes as soon as it runs again, the line keeps an
  * "(Ns ago)" age that visibly grows if refreshing has stalled, and turns
  * highlighted once the data is older than two intervals.
+ *
+ * Nothing is fetched while the tab is hidden: every refresh re-runs CGIs
+ * that each re-read all of status.dat (seconds per request on a large
+ * install), and a view left open in a background tab used to keep doing
+ * that every interval -- one such tab per person who left one around.
+ * Browsers' background-timer throttling (about once a minute) doesn't
+ * help against a 90s interval. Showing the tab again ticks at once, so
+ * it refreshes immediately if the data is due.
  */
 
 const TICK_MS = 1000;
@@ -98,7 +106,7 @@ export function startAutoRefresh(intervalMs: number, refresh: () => Promise<void
 	}
 
 	function tick(): void {
-		if (stopped) return;
+		if (stopped || document.hidden) return;
 		const now = Date.now();
 		const due = failure ? Math.min(intervalMs, RETRY_AFTER_FAILURE_MS) : intervalMs;
 		// A request that never comes back (e.g. a TCP connection that died
@@ -115,7 +123,7 @@ export function startAutoRefresh(intervalMs: number, refresh: () => Promise<void
 		if (document.visibilityState === 'visible') tick();
 	}
 	function onOnline(): void {
-		if (failure && inFlightSince === null) runRefresh();
+		if (failure && inFlightSince === null && !document.hidden) runRefresh();
 	}
 
 	const intervalId = window.setInterval(tick, TICK_MS);

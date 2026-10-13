@@ -596,7 +596,7 @@ export function renderServices(container: HTMLElement, initialFilter: ProblemFil
 		return h;
 	}
 
-	const controls = new ListControls('services', FILTER_FIELDS, () => rerenderTable());
+	const controls = new ListControls('services', FILTER_FIELDS, 'host:web -status:ok', () => rerenderTable());
 
 	function setActionStatus(msg: string): void {
 		if (actionStatusEl) {

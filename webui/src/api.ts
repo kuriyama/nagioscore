@@ -354,6 +354,38 @@ export async function fetchHostFlagStatus(): Promise<Record<string, HostFlagStat
 	return data.hostlist ?? {};
 }
 
+/**
+ * What schedulingqueue.ts reads for each host and service: just enough to
+ * list "next check due" across everything, instead of HOST_STATUS_FIELDS/
+ * SERVICE_STATUS_FIELDS (it needs every host and every service, every
+ * refresh, so the per-record size matters as much as on services.ts).
+ */
+export type ScheduledCheckStatus = Pick<HostStatusDetails, 'should_be_scheduled' | 'last_check' | 'next_check' | 'check_type' | 'checks_enabled'>;
+
+const SCHEDULED_CHECK_FIELDS: Record<keyof ScheduledCheckStatus, true> = {
+	should_be_scheduled: true,
+	last_check: true,
+	next_check: true,
+	check_type: true,
+	checks_enabled: true,
+};
+
+export interface ScheduledChecksResult {
+	queryTime: number;
+	hosts: Record<string, ScheduledCheckStatus>;
+	/** { hostName: { serviceDescription: status } } */
+	services: Record<string, Record<string, ScheduledCheckStatus>>;
+}
+
+export async function fetchScheduledChecks(): Promise<ScheduledChecksResult> {
+	const params = { details: 'true', formatoptions: 'enumerate', fields: fieldsParam(SCHEDULED_CHECK_FIELDS) };
+	const [h, sv] = await Promise.all([
+		fetchJsonWithResult<{ hostlist: Record<string, ScheduledCheckStatus> }>('statusjson.cgi', { query: 'hostlist', ...params }),
+		fetchJsonWithResult<{ servicelist: Record<string, Record<string, ScheduledCheckStatus>> }>('statusjson.cgi', { query: 'servicelist', ...params }),
+	]);
+	return { queryTime: Math.max(h.queryTime, sv.queryTime), hosts: h.data.hostlist ?? {}, services: sv.data.servicelist ?? {} };
+}
+
 export interface HostObjectDetails {
 	address?: string;
 	notes_url?: string;

@@ -246,7 +246,8 @@ export class ListControls {
 	private readonly onChange: () => void;
 	private readonly onKeydown: (ev: KeyboardEvent) => void;
 
-	constructor(noun: string, fields: readonly FilterField[], onChange: () => void) {
+	/** `example` is shown as the empty filter box's placeholder hint. */
+	constructor(noun: string, fields: readonly FilterField[], example: string, onChange: () => void) {
 		this.noun = noun;
 		this.fields = fields;
 		this.onChange = onChange;
@@ -260,7 +261,7 @@ export class ListControls {
 		this.input = document.createElement('input');
 		this.input.type = 'search';
 		this.input.className = 'listFilter';
-		this.input.placeholder = `Filter ${noun}... e.g. ${fields[0].name}:web -status:ok`;
+		this.input.placeholder = `Filter ${noun}... e.g. ${example}`;
 		this.input.title = filterHelp(fields);
 		this.input.value = this.query;
 		this.input.spellcheck = false;

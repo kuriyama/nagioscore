@@ -1,22 +1,17 @@
-import {
-	fetchHostStatusDetails,
-	fetchServiceStatusDetails,
-	extinfoHostUrl,
-	extinfoServiceUrl,
-	type HostStatusDetails,
-	type ServiceStatusEntry,
-} from './api';
+import { fetchScheduledChecks, extinfoHostUrl, extinfoServiceUrl, type ScheduledCheckStatus } from './api';
 import { formatTimestamp } from './format';
 import { startAutoRefresh } from './refresh';
+import { ListControls, compareText, setHighlightedText, type FilterField, type FilterQuery } from './listcontrols';
 
 /**
  * Port of extinfo.cgi?type=7 ("Scheduling Queue"): every host/service check
  * next due to run, across both hosts and services in one merged, sorted
- * list. Needs no new API calls -- fetchHostStatusDetails()/
- * fetchServiceStatusDetails() already return next_check/
- * should_be_scheduled/check_type on every entry (details=true always
- * includes them); this view just merges and sorts what hosts.ts/
- * services.ts already fetch separately.
+ * list, from fetchScheduledChecks() (the same hostlist/servicelist
+ * queries hosts.ts/services.ts use, narrowed with fields= to the five
+ * fields this view reads). Like those views, every row is fetched and
+ * sorted/filtered here but only one page is rendered (listcontrols.ts) --
+ * this list has a row per host *and* per service, so it's the largest
+ * table in the webui.
  *
  * Deliberate simplification vs. the original: cgi/extinfo.c's queue also
  * shows a should_be_scheduled==FALSE entry if it's a forced passive check
@@ -49,11 +44,18 @@ interface QueueEntry {
 	description?: string;
 	lastCheck: number;
 	nextCheck: number;
-	checkType: HostStatusDetails['check_type'];
+	checkType: ScheduledCheckStatus['check_type'];
 	checksEnabled: boolean;
 }
 
-function toQueueEntries(hosts: Record<string, HostStatusDetails>, services: ServiceStatusEntry[]): QueueEntry[] {
+/** Columns the filter box can address as `name:value` (see listcontrols.ts's FilterQuery). */
+const FILTER_FIELDS: FilterField[] = [
+	{ name: 'host', help: 'host name' },
+	{ name: 'service', aliases: ['svc'], help: 'service description (host checks have none)' },
+	{ name: 'type', prefix: true, help: 'check type, from the start (type:p = Passive)' },
+];
+
+function toQueueEntries(hosts: Record<string, ScheduledCheckStatus>, services: Record<string, Record<string, ScheduledCheckStatus>>): QueueEntry[] {
 	const entries: QueueEntry[] = [];
 
 	for (const [hostName, status] of Object.entries(hosts)) {
@@ -67,16 +69,18 @@ function toQueueEntries(hosts: Record<string, HostStatusDetails>, services: Serv
 		});
 	}
 
-	for (const entry of services) {
-		if (!entry.status.should_be_scheduled) continue;
-		entries.push({
-			hostName: entry.hostName,
-			description: entry.description,
-			lastCheck: entry.status.last_check,
-			nextCheck: entry.status.next_check,
-			checkType: entry.status.check_type,
-			checksEnabled: entry.status.checks_enabled,
-		});
+	for (const [hostName, byDescription] of Object.entries(services)) {
+		for (const [description, status] of Object.entries(byDescription)) {
+			if (!status.should_be_scheduled) continue;
+			entries.push({
+				hostName,
+				description,
+				lastCheck: status.last_check,
+				nextCheck: status.next_check,
+				checkType: status.check_type,
+				checksEnabled: status.checks_enabled,
+			});
+		}
 	}
 
 	return entries;
@@ -86,10 +90,10 @@ function compareEntries(a: QueueEntry, b: QueueEntry, sort: SortState): number {
 	let cmp: number;
 	switch (sort.key) {
 		case 'host':
-			cmp = a.hostName.localeCompare(b.hostName);
+			cmp = compareText(a.hostName, b.hostName);
 			break;
 		case 'service':
-			cmp = (a.description ?? '').localeCompare(b.description ?? '');
+			cmp = compareText(a.description ?? '', b.description ?? '');
 			break;
 		case 'lastCheck':
 			cmp = a.lastCheck - b.lastCheck;
@@ -99,23 +103,21 @@ function compareEntries(a: QueueEntry, b: QueueEntry, sort: SortState): number {
 			break;
 	}
 	if (cmp === 0) {
-		cmp = a.hostName.localeCompare(b.hostName) || (a.description ?? '').localeCompare(b.description ?? '');
+		cmp = compareText(a.hostName, b.hostName) || compareText(a.description ?? '', b.description ?? '');
 	}
 	return sort.direction === 'asc' ? cmp : -cmp;
 }
 
-function renderTableBody(tbody: HTMLTableSectionElement, entries: QueueEntry[], sort: SortState): void {
+function renderTableBody(tbody: HTMLTableSectionElement, entries: QueueEntry[], filter: FilterQuery, emptyText: string): void {
 	tbody.innerHTML = '';
 
-	const sorted = [...entries].sort((a, b) => compareEntries(a, b, sort));
-
-	for (const entry of sorted) {
+	for (const entry of entries) {
 		const row = document.createElement('tr');
 
 		const hostCell = document.createElement('td');
 		const hostLink = document.createElement('a');
 		hostLink.href = extinfoHostUrl(entry.hostName);
-		hostLink.textContent = entry.hostName;
+		setHighlightedText(hostLink, entry.hostName, filter.highlightFor('host'));
 		hostCell.appendChild(hostLink);
 		row.appendChild(hostCell);
 
@@ -123,7 +125,7 @@ function renderTableBody(tbody: HTMLTableSectionElement, entries: QueueEntry[], 
 		if (entry.description) {
 			const serviceLink = document.createElement('a');
 			serviceLink.href = extinfoServiceUrl(entry.hostName, entry.description);
-			serviceLink.textContent = entry.description;
+			setHighlightedText(serviceLink, entry.description, filter.highlightFor('service'));
 			serviceCell.appendChild(serviceLink);
 		}
 		row.appendChild(serviceCell);
@@ -137,7 +139,7 @@ function renderTableBody(tbody: HTMLTableSectionElement, entries: QueueEntry[], 
 		row.appendChild(nextCheckCell);
 
 		const typeCell = document.createElement('td');
-		typeCell.textContent = entry.checkType === 'active' ? 'Active' : 'Passive';
+		setHighlightedText(typeCell, entry.checkType === 'active' ? 'Active' : 'Passive', filter.highlightFor('type'));
 		row.appendChild(typeCell);
 
 		const enabledCell = document.createElement('td');
@@ -147,11 +149,11 @@ function renderTableBody(tbody: HTMLTableSectionElement, entries: QueueEntry[], 
 		tbody.appendChild(row);
 	}
 
-	if (sorted.length === 0) {
+	if (entries.length === 0) {
 		const row = document.createElement('tr');
 		const cell = document.createElement('td');
 		cell.colSpan = COLUMNS.length + 2;
-		cell.textContent = 'The scheduling queue is empty.';
+		cell.textContent = emptyText;
 		row.appendChild(cell);
 		tbody.appendChild(row);
 	}
@@ -173,12 +175,43 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 	let tbody: HTMLTableSectionElement | null = null;
 	let heading: HTMLElement | null = null;
 
+	// See hosts.ts's matching sortedEntries()/haystack().
+	let dataVersion = 0;
+	let sortedCache: { key: string; entries: QueueEntry[] } | null = null;
+	function sortedEntries(): QueueEntry[] {
+		const key = `${dataVersion}|${sort.key}|${sort.direction}`;
+		if (sortedCache?.key !== key) {
+			sortedCache = { key, entries: [...currentEntries].sort((a, b) => compareEntries(a, b, sort)) };
+		}
+		return sortedCache.entries;
+	}
+
+	let haystacks = new WeakMap<QueueEntry, Record<string, string>>();
+	function haystack(e: QueueEntry): Record<string, string> {
+		let h = haystacks.get(e);
+		if (h === undefined) {
+			h = {
+				host: e.hostName.toLowerCase(),
+				service: (e.description ?? '').toLowerCase(),
+				type: e.checkType === 'active' ? 'active' : 'passive',
+			};
+			haystacks.set(e, h);
+		}
+		return h;
+	}
+
+	const controls = new ListControls('checks', FILTER_FIELDS, 'host:web type:p', () => rerenderTable());
+
 	function rerenderTable(): void {
+		const all = sortedEntries();
+		const filter = controls.filter();
+		const matched = filter.empty ? all : all.filter((e) => filter.matches(haystack(e)));
+		const page = controls.slice(matched);
 		if (tbody) {
-			renderTableBody(tbody, currentEntries, sort);
+			renderTableBody(tbody, page.items, filter, all.length === 0 ? 'The scheduling queue is empty.' : 'No checks match this filter.');
 		}
 		if (heading) {
-			heading.textContent = `Scheduling Queue (${currentEntries.length})`;
+			heading.textContent = filter.empty ? `Scheduling Queue (${all.length})` : `Scheduling Queue (${matched.length} of ${all.length})`;
 		}
 	}
 
@@ -191,10 +224,9 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 	const refresher = startAutoRefresh(REFRESH_INTERVAL_MS, () => load(false));
 
 	async function load(initial: boolean): Promise<void> {
-		let hostResult;
-		let serviceResult;
+		let result;
 		try {
-			[hostResult, serviceResult] = await Promise.all([fetchHostStatusDetails(), fetchServiceStatusDetails()]);
+			result = await fetchScheduledChecks();
 		} catch (err) {
 			if (!initial) {
 				refresher.failed(err);
@@ -207,7 +239,9 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 			return;
 		}
 
-		currentEntries = toQueueEntries(hostResult.hosts, serviceResult.services);
+		currentEntries = toQueueEntries(result.hosts, result.services);
+		dataVersion++;
+		haystacks = new WeakMap();
 
 		if (initial) {
 			container.innerHTML = '';
@@ -215,6 +249,13 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 			heading = document.createElement('h2');
 			container.appendChild(heading);
 			container.appendChild(refresher.el);
+
+			const filterBar = document.createElement('div');
+			filterBar.id = 'detailFilterBar';
+			filterBar.appendChild(controls.input);
+			container.appendChild(filterBar);
+
+			container.appendChild(controls.topPager);
 
 			const table = document.createElement('table');
 			table.className = 'status';
@@ -233,6 +274,7 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 						sort.direction = 'asc';
 					}
 					updateHeaderLabels();
+					controls.resetPage();
 					rerenderTable();
 				});
 				headRow.appendChild(th);
@@ -251,14 +293,19 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 			table.appendChild(tbody);
 			container.appendChild(table);
 
+			container.appendChild(controls.bottomPager);
+
 			updateHeaderLabels();
 		}
 
-		refresher.succeeded(Math.max(hostResult.queryTime, serviceResult.queryTime));
+		refresher.succeeded(result.queryTime);
 		rerenderTable();
 	}
 
 	void load(true);
 
-	return () => refresher.stop();
+	return () => {
+		controls.destroy();
+		refresher.stop();
+	};
 }

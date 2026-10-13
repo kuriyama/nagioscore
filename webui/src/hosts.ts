@@ -441,7 +441,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		return h;
 	}
 
-	const controls = new ListControls('hosts', FILTER_FIELDS, () => rerenderTable());
+	const controls = new ListControls('hosts', FILTER_FIELDS, 'host:web -status:up', () => rerenderTable());
 
 	function setActionStatus(msg: string): void {
 		if (actionStatusEl) {

@@ -43,6 +43,7 @@ NAGIOS_BEGIN_DECL
 #endif
 #define COMMAND_CGI		"cmd.cgi"
 #define EXTINFO_CGI		"extinfo.cgi"
+#define OBJECTJSON_CGI		"objectjson.cgi"
 #define SHOWLOG_CGI		"showlog.cgi"
 #define NOTIFICATIONS_CGI	"notifications.cgi"
 #define HISTORY_CGI		"history.cgi"

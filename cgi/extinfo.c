@@ -94,6 +94,14 @@ authdata current_authdata;
 
 sortdata *sortdata_list = NULL;
 
+
+/* objectjson.cgi's authorizedviewers query is limited to these users */
+static int can_see_authorized_viewers(void) {
+	return (is_authorized_for_configuration_information(&current_authdata) == TRUE &&
+			is_authorized_for_all_hosts(&current_authdata) == TRUE &&
+			is_authorized_for_all_services(&current_authdata) == TRUE) ? TRUE : FALSE;
+	}
+
 char *host_name = "";
 char *hostgroup_name = "";
 char *servicegroup_name = "";
@@ -226,6 +234,8 @@ int main(void) {
 #endif
 				printf("<A HREF='%s?host=%s&show_log_entries'>View Availability Report For This Host</A><BR>\n", AVAIL_CGI, url_encode(host_name));
 				printf("<A HREF='%s?host=%s'>View Notifications For This Host</A>\n", NOTIFICATIONS_CGI, url_encode(host_name));
+				if(can_see_authorized_viewers() == TRUE)
+					printf("<BR><A HREF='%s?query=authorizedviewers&formatoptions=whitespace&hostname=%s'>View Users Authorized For This Host (JSON)</A>\n", OBJECTJSON_CGI, url_encode(host_name));
 				}
 			else if(display_type == DISPLAY_SERVICE_INFO) {
 				printf("<A HREF='%s?host=%s&", HISTORY_CGI, url_encode(host_name));
@@ -242,6 +252,10 @@ int main(void) {
 				printf("service=%s&show_log_entries'>View Availability Report For This Service</A><BR>\n", url_encode(service_desc));
 				printf("<A HREF='%s?host=%s&", NOTIFICATIONS_CGI, url_encode(host_name));
 				printf("service=%s'>View Notifications For This Service</A>\n", url_encode(service_desc));
+				if(can_see_authorized_viewers() == TRUE) {
+					printf("<BR><A HREF='%s?query=authorizedviewers&formatoptions=whitespace&hostname=%s&", OBJECTJSON_CGI, url_encode(host_name));
+					printf("servicedescription=%s'>View Users Authorized For This Service (JSON)</A>\n", url_encode(service_desc));
+					}
 				}
 			else if(display_type == DISPLAY_HOSTGROUP_INFO) {
 				printf("<A HREF='%s?hostgroup=%s&style=detail'>View Status Detail For This Hostgroup</A><BR>\n", STATUS_CGI, url_encode(hostgroup_name));

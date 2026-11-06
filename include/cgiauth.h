@@ -43,6 +43,9 @@ typedef struct authdata_struct {
 
 
 int get_authentication_information(authdata *);       /* gets current authentication information */
+int get_authentication_information_for_user(authdata *, const char *);	/* builds the authentication information of any user */
+char **get_auth_config_lines(int *);	/* auth-related lines of the CGI config file */
+void free_auth_config_lines(void);
 
 int is_authorized_for_host(host *, authdata *);
 int is_authorized_for_service(service *, authdata *);

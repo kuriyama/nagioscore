@@ -22,6 +22,7 @@ TESTS += test_nagios_config
 TESTS += test_timeperiods
 TESTS += test_macros
 TESTS += test_json_escape
+TESTS += test_jsonutils
 TESTS += test_getcgi
 TESTS += test_cgiauth
 TESTS += test_cmd
@@ -111,6 +112,9 @@ test_xsddefault: test_xsddefault.o $(XSD_OBJS) $(TAPOBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 test_json_escape: test_json_escape.o $(SRC_CGI)/json_escape.o $(TAPOBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+test_jsonutils: test_jsonutils.o $(SRC_CGI)/jsonutils.o $(SRC_CGI)/json_escape.o $(TAPOBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 test_getcgi: test_getcgi.o $(SRC_CGI)/getcgi.o $(TAPOBJ)

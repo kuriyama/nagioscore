@@ -173,8 +173,11 @@ archiveutils.o: archiveutils.c $(SRC_INCLUDE)/archiveutils.h
 archivejson.cgi: archivejson.c $(CGIDEPS) archiveutils.o jsonutils.o json_escape.o $(SRC_INCLUDE)/archivejson.h
 	$(CC) $(CFLAGS) $(JSONFLAGS) $(LDFLAGS) -o $@ archivejson.c $(CGILIBS) archiveutils.o jsonutils.o json_escape.o $(LIBS)
 
-objectjson.cgi: objectjson.c $(CGIDEPS) jsonutils.o json_escape.o $(SRC_INCLUDE)/objectjson.h
-	$(CC) $(CFLAGS) $(JSONFLAGS) $(LDFLAGS) -o $@ objectjson.c $(CGILIBS) jsonutils.o json_escape.o $(LIBS)
+authviewers.o: authviewers.c $(SRC_INCLUDE)/authviewers.h $(SRC_INCLUDE)/cgiauth.h
+	$(CC) $(CFLAGS) -c -o $@ authviewers.c
+
+objectjson.cgi: objectjson.c $(CGIDEPS) authviewers.o jsonutils.o json_escape.o $(SRC_INCLUDE)/objectjson.h
+	$(CC) $(CFLAGS) $(JSONFLAGS) $(LDFLAGS) -o $@ objectjson.c $(CGILIBS) authviewers.o jsonutils.o json_escape.o $(LIBS)
 
 statusjson.cgi: statusjson.c $(CGIDEPS) jsonutils.o json_escape.o $(SRC_INCLUDE)/statusjson.h
 	$(CC) $(CFLAGS) $(JSONFLAGS) $(LDFLAGS) -o $@ statusjson.c $(CGILIBS) jsonutils.o json_escape.o $(LIBS)

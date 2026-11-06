@@ -101,6 +101,8 @@ typedef struct object_json_cgi_data_struct {
 	contactgroup *	contactgroup;
 	/* Name of contact for which details should be returned */
 	char *		contact_name;
+	/* User name whose view authorizations should be returned */
+	char *		username;
 	/* Contact whose contact name is contact_name */
 	contact *	contact;
 	/* Name of contact whose contactgroup should be returned if 
@@ -210,6 +212,8 @@ typedef struct object_json_cgi_data_struct {
 #define OBJECT_QUERY_HOSTESCALATIONCOUNT	31
 #define OBJECT_QUERY_HOSTESCALATIONLIST		32
 #define OBJECT_QUERY_HELP					33
+#define OBJECT_QUERY_AUTHORIZEDVIEWERS		34
+#define OBJECT_QUERY_AUTHORIZEDOBJECTS		35
 
 extern json_object * json_object_custom_variables(struct customvariablesmember *);
 
@@ -235,6 +239,8 @@ extern json_object *json_object_servicelist(unsigned, int, int, int, host *,
 		int, host *, int, host *, hostgroup *, servicegroup *, contact *,
 		char *, char *, char *, contactgroup *, timeperiod *, timeperiod *,
 		command *, command *, char *);
+extern json_object *json_object_authorizedviewers(host *, service *);
+extern json_object *json_object_authorizedobjects(char *);
 extern json_object *json_object_service(unsigned, service *, char *);
 extern void json_object_service_details(json_object *, unsigned, service *,
 		const field_filter *);

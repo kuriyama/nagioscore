@@ -40,6 +40,7 @@
 #include "../include/cgiutils.h"
 #include "../include/getcgi.h"
 #include "../include/cgiauth.h"
+#include "../include/authviewers.h"
 #include "../include/jsonutils.h"
 #include "../include/objectjson.h"
 
@@ -47,6 +48,7 @@
 
 extern char main_config_file[MAX_FILENAME_LENGTH];
 extern char *status_file;
+extern int use_authentication;
 
 extern host *host_list;
 extern hostgroup *hostgroup_list;
@@ -135,6 +137,10 @@ const string_value_mapping valid_queries[] = {
 		"Return the number of host escalations" },
 	{ "hostescalationlist", OBJECT_QUERY_HOSTESCALATIONLIST,
 		"Return a list of host escalations" },
+	{ "authorizedviewers", OBJECT_QUERY_AUTHORIZEDVIEWERS,
+		"Return the users authorized to view a host or service, and why (needs configuration information and all hosts/services authorization)" },
+	{ "authorizedobjects", OBJECT_QUERY_AUTHORIZEDOBJECTS,
+		"Return the hosts and services a user is authorized to view, and why (needs configuration information and all hosts/services authorization)" },
 	{ "help", OBJECT_QUERY_HELP, 
 		"Display help for this CGI" },
 	{ NULL, -1, NULL },
@@ -173,6 +179,8 @@ static const int query_status[][2] = {
 	{ OBJECT_QUERY_HOSTDEPENDENCYLIST, QUERY_STATUS_RELEASED },
 	{ OBJECT_QUERY_HOSTESCALATIONCOUNT, QUERY_STATUS_RELEASED },
 	{ OBJECT_QUERY_HOSTESCALATIONLIST, QUERY_STATUS_RELEASED },
+	{ OBJECT_QUERY_AUTHORIZEDVIEWERS, QUERY_STATUS_RELEASED },
+	{ OBJECT_QUERY_AUTHORIZEDOBJECTS, QUERY_STATUS_RELEASED },
 	{ OBJECT_QUERY_HELP, QUERY_STATUS_RELEASED },
 	{ -1, -1 },
 };
@@ -272,7 +280,7 @@ option_help object_json_help[] = {
 		"hostname",
 		"Host Name",
 		"nagios:objectjson/hostlist",
-		{ "host", "service", NULL },
+		{ "host", "service", "authorizedviewers", NULL },
 		{ "servicecount", "servicelist", "hostescalationlist", "serviceescalationlist", NULL },
 		NULL,
 		"Name for the host requested.",
@@ -343,7 +351,7 @@ option_help object_json_help[] = {
 		"Service Description",
 		"nagios:objectjson/servicelist",
 		{ "service", NULL },
-		{ "servicecount", "servicelist", "serviceescalationcount", "serviceescalationlist", NULL },
+		{ "servicecount", "servicelist", "serviceescalationcount", "serviceescalationlist", "authorizedviewers", NULL },
 		"hostname",
 		"Description for the service requested.",
 		NULL
@@ -376,6 +384,16 @@ option_help object_json_help[] = {
 		{ "hostcount", "hostlist", "servicecount", "servicelist", "serviceescalationcount", "serviceescalationlist", "hostescalationcount", "hostescalationlist", NULL },
 		NULL,
 		"Name for the contact requested.",
+		NULL
+		},
+	{
+		"username",
+		"User Name",
+		"string",
+		{ "authorizedobjects", NULL },
+		{ NULL },
+		NULL,
+		"Login user name whose view authorizations are requested. It need not be a contact.",
 		NULL
 		},
 	{ 
@@ -1141,6 +1159,34 @@ int main(void) {
 				cgi_data.start, cgi_data.count, cgi_data.host,
 				cgi_data.hostgroup, cgi_data.contact, cgi_data.contactgroup));
 		break;
+	case OBJECT_QUERY_AUTHORIZEDVIEWERS:
+	case OBJECT_QUERY_AUTHORIZEDOBJECTS:
+		/* telling who may see what discloses other users' authorizations,
+		   so only users who can see the whole configuration may ask */
+		if(is_authorized_for_configuration_information(&current_authdata) == FALSE ||
+				is_authorized_for_all_hosts(&current_authdata) == FALSE ||
+				is_authorized_for_all_services(&current_authdata) == FALSE) {
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data.query, valid_queries), 
+					get_query_status(query_status, cgi_data.query),
+					(time_t)-1, &current_authdata, RESULT_NOT_AUTHORIZED,
+					"Error: This query needs configuration information and all hosts/services authorization."));
+			break;
+			}
+		json_object_append_object(json_root, "result", 
+				json_result(query_time, THISCGI, 
+				svm_get_string_from_value(cgi_data.query, valid_queries), 
+				get_query_status(query_status, cgi_data.query),
+				last_object_cache_update, &current_authdata,
+				RESULT_SUCCESS, ""));
+		if(cgi_data.query == OBJECT_QUERY_AUTHORIZEDVIEWERS)
+			json_object_append_object(json_root, "data", 
+					json_object_authorizedviewers(cgi_data.host, cgi_data.service));
+		else
+			json_object_append_object(json_root, "data", 
+					json_object_authorizedobjects(cgi_data.username));
+		break;
 	case OBJECT_QUERY_HELP:
 		json_object_append_object(json_root, "result", 
 				json_result(query_time, THISCGI, 
@@ -1238,6 +1284,7 @@ void init_cgi_data(object_json_cgi_data *cgi_data) {
 	cgi_data->contactgroup = NULL;
 	cgi_data->contact_name = NULL;
 	cgi_data->contact = NULL;
+	cgi_data->username = NULL;
 	cgi_data->contactgroup_member_name = NULL;
 	cgi_data->contactgroup_member = NULL;
 	cgi_data->timeperiod_name = NULL;
@@ -1287,6 +1334,7 @@ void free_cgi_data( object_json_cgi_data *cgi_data) {
 	if( NULL != cgi_data->child_service_name) free( cgi_data->child_service_name);
 	if( NULL != cgi_data->contactgroup_name) free(cgi_data->contactgroup_name);
 	if( NULL != cgi_data->contact_name) free(cgi_data->contact_name);
+	if( NULL != cgi_data->username) free(cgi_data->username);
 	if( NULL != cgi_data->contactgroup_member_name) free(cgi_data->contactgroup_member_name);
 	if( NULL != cgi_data->timeperiod_name) free(cgi_data->timeperiod_name);
 	if( NULL != cgi_data->check_timeperiod_name) free(cgi_data->check_timeperiod_name);
@@ -1533,6 +1581,18 @@ int process_cgivars(json_object *json_root, object_json_cgi_data *cgi_data,
 					get_query_status(query_status, cgi_data->query),
 					json_root, query_time, authinfo, variables[x],
 					variables[x+1], &(cgi_data->contact_name)))
+					!= RESULT_SUCCESS) {
+				break;
+				}
+			x++;
+			}
+
+		else if(!strcmp(variables[x], "username")) {
+			if((result = parse_string_cgivar(THISCGI, 
+					svm_get_string_from_value(cgi_data->query, valid_queries), 
+					get_query_status(query_status, cgi_data->query),
+					json_root, query_time, authinfo, variables[x],
+					variables[x+1], &(cgi_data->username)))
 					!= RESULT_SUCCESS) {
 				break;
 				}
@@ -1953,6 +2013,28 @@ int validate_arguments(json_object *json_root, object_json_cgi_data *cgi_data,
 	case OBJECT_QUERY_HOSTESCALATIONCOUNT:
 		break;
 	case OBJECT_QUERY_HOSTESCALATIONLIST:
+		break;
+	case OBJECT_QUERY_AUTHORIZEDVIEWERS:
+		if( NULL == cgi_data->host_name) {
+			result = RESULT_OPTION_MISSING;
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data->query, valid_queries), 
+					get_query_status(query_status, cgi_data->query),
+					(time_t)-1, authinfo, result,
+					"Authorized viewers requested, but no host name specified."));
+			}
+		break;
+	case OBJECT_QUERY_AUTHORIZEDOBJECTS:
+		if( NULL == cgi_data->username) {
+			result = RESULT_OPTION_MISSING;
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data->query, valid_queries), 
+					get_query_status(query_status, cgi_data->query),
+					(time_t)-1, authinfo, result,
+					"Authorized objects requested, but no user name specified."));
+			}
 		break;
 	case OBJECT_QUERY_HELP:
 		break;
@@ -3744,6 +3826,163 @@ json_object *json_object_servicelist(unsigned format_options, int start,
 		}
 
 	json_object_append_object(json_data, "servicelist", json_hostlist);
+	return json_data;
+	}
+
+static void json_object_append_reasons(json_object *obj, auth_reasons *r) {
+	json_array *json_reasons = json_new_array();
+	int x;
+
+	for(x = 0; x < r->count; x++)
+		json_array_append_string(json_reasons, &percent_escapes, r->items[x]);
+	json_object_append_array(obj, "reasons", json_reasons);
+	}
+
+static int explain_authorization(host *temp_host, service *temp_service,
+		authdata *authinfo, auth_reasons *r) {
+
+	if(NULL != temp_service)
+		return explain_service_authorization(temp_service, authinfo, r);
+	return explain_host_authorization(temp_host, authinfo, r);
+	}
+
+json_object *json_object_authorizedviewers(host *temp_host,
+		service *temp_service) {
+
+	json_object *json_data = json_new_object();
+	json_array *json_viewers = json_new_array();
+	json_object *json_viewer;
+	authdata authinfo;
+	auth_reasons reasons;
+	char **names;
+	int name_count;
+	int x;
+
+	json_object_append_string(json_data, "host_name", &percent_escapes,
+			temp_host->name);
+	if(NULL != temp_service) {
+		json_object_append_string(json_data, "description", &percent_escapes,
+				temp_service->description);
+		}
+	json_object_append_boolean(json_data, "authentication_disabled",
+			(use_authentication == FALSE));
+
+	/* what the "*" wildcards grant to any authenticated user */
+	auth_reasons_init(&reasons);
+	get_authentication_information_for_anyone(&authinfo);
+	if(explain_authorization(temp_host, temp_service, &authinfo, &reasons)
+			== TRUE) {
+		json_object_append_boolean(json_data, "any_authenticated_user", TRUE);
+		json_object_append_reasons(json_data, &reasons);
+		}
+	else {
+		json_object_append_boolean(json_data, "any_authenticated_user", FALSE);
+		}
+	auth_reasons_free(&reasons);
+	free(authinfo.username);
+
+	names = get_auth_candidate_users(&name_count);
+	for(x = 0; x < name_count; x++) {
+		if(get_authentication_information_for_user(&authinfo, names[x]) != OK)
+			continue;
+		auth_reasons_init(&reasons);
+		if(explain_authorization(temp_host, temp_service, &authinfo, &reasons)
+				== TRUE) {
+			json_viewer = json_new_object();
+			json_object_append_string(json_viewer, "name", &percent_escapes,
+					names[x]);
+			json_object_append_boolean(json_viewer, "is_contact",
+					(find_contact(names[x]) != NULL));
+			json_object_append_reasons(json_viewer, &reasons);
+			json_array_append_object(json_viewers, json_viewer);
+			}
+		auth_reasons_free(&reasons);
+		free(authinfo.username);
+		}
+	free_auth_candidate_users(names, name_count);
+
+	json_object_append_integer(json_data, "count", json_viewers->member_count);
+	json_object_append_array(json_data, "viewers", json_viewers);
+
+	return json_data;
+	}
+
+json_object *json_object_authorizedobjects(char *username) {
+
+	json_object *json_data = json_new_object();
+	json_object *json_privileges = json_new_object();
+	json_array *json_hosts = json_new_array();
+	json_array *json_services = json_new_array();
+	json_object *json_item;
+	authdata authinfo;
+	auth_reasons reasons;
+	host *temp_host;
+	service *temp_service;
+
+	get_authentication_information_for_user(&authinfo, username);
+
+	json_object_append_string(json_data, "username", &percent_escapes,
+			username);
+	json_object_append_boolean(json_data, "is_contact",
+			(find_contact(username) != NULL));
+	json_object_append_boolean(json_data, "authentication_disabled",
+			(use_authentication == FALSE));
+
+	json_object_append_boolean(json_privileges, "all_hosts",
+			is_authorized_for_all_hosts(&authinfo));
+	json_object_append_boolean(json_privileges, "all_services",
+			is_authorized_for_all_services(&authinfo));
+	json_object_append_boolean(json_privileges, "all_host_commands",
+			authinfo.authorized_for_all_host_commands);
+	json_object_append_boolean(json_privileges, "all_service_commands",
+			authinfo.authorized_for_all_service_commands);
+	json_object_append_boolean(json_privileges, "system_information",
+			is_authorized_for_system_information(&authinfo));
+	json_object_append_boolean(json_privileges, "configuration_information",
+			is_authorized_for_configuration_information(&authinfo));
+	json_object_append_boolean(json_privileges, "system_commands",
+			is_authorized_for_system_commands(&authinfo));
+	json_object_append_boolean(json_privileges, "read_only",
+			is_authorized_for_read_only(&authinfo));
+	json_object_append_object(json_data, "privileges", json_privileges);
+
+	for(temp_host = host_list; temp_host != NULL; temp_host = temp_host->next) {
+		auth_reasons_init(&reasons);
+		if(explain_host_authorization(temp_host, &authinfo, &reasons) == TRUE) {
+			json_item = json_new_object();
+			json_object_append_string(json_item, "name", &percent_escapes,
+					temp_host->name);
+			json_object_append_reasons(json_item, &reasons);
+			json_array_append_object(json_hosts, json_item);
+			}
+		auth_reasons_free(&reasons);
+		}
+
+	for(temp_service = service_list; temp_service != NULL;
+			temp_service = temp_service->next) {
+		auth_reasons_init(&reasons);
+		if(explain_service_authorization(temp_service, &authinfo, &reasons)
+				== TRUE) {
+			json_item = json_new_object();
+			json_object_append_string(json_item, "host_name", &percent_escapes,
+					temp_service->host_name);
+			json_object_append_string(json_item, "description",
+					&percent_escapes, temp_service->description);
+			json_object_append_reasons(json_item, &reasons);
+			json_array_append_object(json_services, json_item);
+			}
+		auth_reasons_free(&reasons);
+		}
+
+	free(authinfo.username);
+
+	json_object_append_integer(json_data, "host_count",
+			json_hosts->member_count);
+	json_object_append_array(json_data, "hosts", json_hosts);
+	json_object_append_integer(json_data, "service_count",
+			json_services->member_count);
+	json_object_append_array(json_data, "services", json_services);
+
 	return json_data;
 	}
 

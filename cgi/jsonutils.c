@@ -46,7 +46,8 @@ const char *result_types[] = {
 	"Option Missing",
 	"Option Value Missing",
 	"Option Value Invalid",
-	"Option Ignored"
+	"Option Ignored",
+	"Not Authorized"
 	};
 
 const string_value_mapping svm_format_options[] = {

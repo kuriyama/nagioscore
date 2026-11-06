@@ -26,6 +26,7 @@ TESTS += test_getcgi
 TESTS += test_cgiauth
 TESTS += test_cmd
 TESTS += test_cgiauth_objects
+TESTS += test_cgiauth_viewers
 
 XSD_OBJS = $(SRC_CGI)/statusdata-cgi.o $(SRC_CGI)/xstatusdata-cgi.o
 XSD_OBJS += $(SRC_CGI)/objects-cgi.o $(SRC_CGI)/xobjects-cgi.o
@@ -137,6 +138,11 @@ test_cmd: test_cmd.o cmd-fortest.o $(TAPOBJ)
 # common/objects.c's own object-creation API (objects-cgi.o, the same
 # translation unit cgi/ programs link), not a stub layer.
 test_cgiauth_objects: test_cgiauth_objects.o $(SRC_CGI)/cgiauth.o $(SRC_CGI)/objects-cgi.o $(SRC_COMMON)/shared.o $(TAPOBJ)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+# test_cgiauth_viewers.c tests cgi/authviewers.c (and cgiauth.c's cgi.cfg
+# handling) against a real object graph and a temporary cgi.cfg.
+test_cgiauth_viewers: test_cgiauth_viewers.o $(SRC_CGI)/authviewers.o $(SRC_CGI)/cgiauth.o $(SRC_CGI)/objects-cgi.o $(SRC_COMMON)/shared.o $(TAPOBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 test: $(TESTS)

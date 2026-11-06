@@ -102,6 +102,7 @@ typedef struct option_help_struct {
 #define RESULT_OPTION_VALUE_MISSING	5
 #define RESULT_OPTION_VALUE_INVALID	6
 #define RESULT_OPTION_IGNORED	7
+#define RESULT_NOT_AUTHORIZED	8
 
 /* Boolean Values - Used when selecting true, false, or both */
 #define BOOLEAN_TRUE	1

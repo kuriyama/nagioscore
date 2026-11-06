@@ -23,8 +23,6 @@
 
 /*
 	TODO:
-		Return an error when the authenticated user is not authorized
-			for the requested host or service
 		Consolidate criteria functions for *count and *list queries
 		Move static programstatus information to objectjson.c?
 */
@@ -737,6 +735,8 @@ json_object *json_status_service_selectors(unsigned, int, int, int, host *, int,
 		time_t, time_t, char *, char *, char *, contactgroup *, timeperiod *,
 		timeperiod *, command *, command *);
 
+static int is_authorized_for_comment(nagios_comment *);
+static int is_authorized_for_downtime(scheduled_downtime *);
 int json_status_comment_passes_selection(nagios_comment *, int, time_t, time_t,
 		unsigned, unsigned, unsigned, unsigned, char *, char *);
 json_object *json_status_comment_selectors(unsigned, int, int, int, time_t, 
@@ -953,6 +953,17 @@ int main(void) {
 					cgi_data.host_name));
 			result = ERROR;
 			}
+		else if(FALSE == is_authorized_for_host(cgi_data.host,
+				&current_authdata)) {
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data.query, valid_queries), 
+					get_query_status(query_status, cgi_data.query),
+					(time_t)-1, &current_authdata, RESULT_NOT_AUTHORIZED,
+					"You are not authorized to view host '%s'.",
+					cgi_data.host_name));
+			result = ERROR;
+			}
 		else {
 			json_object_append_object(json_root, "result", 
 					json_result(query_time, THISCGI, 
@@ -1026,6 +1037,17 @@ int main(void) {
 					get_query_status(query_status, cgi_data.query),
 					(time_t)-1, &current_authdata, RESULT_OPTION_VALUE_INVALID,
 					"The status for service '%s' on host '%s' could not be found.", 
+					cgi_data.service_description, cgi_data.host_name));
+			result = ERROR;
+			}
+		else if(FALSE == is_authorized_for_service(cgi_data.service,
+				&current_authdata)) {
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data.query, valid_queries), 
+					get_query_status(query_status, cgi_data.query),
+					(time_t)-1, &current_authdata, RESULT_NOT_AUTHORIZED,
+					"You are not authorized to view service '%s' on host '%s'.",
 					cgi_data.service_description, cgi_data.host_name));
 			result = ERROR;
 			}
@@ -1103,6 +1125,17 @@ int main(void) {
 				cgi_data.service_description));
 		break;
 	case STATUS_QUERY_COMMENT:
+		if(FALSE == is_authorized_for_comment(cgi_data.comment)) {
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data.query, valid_queries), 
+					get_query_status(query_status, cgi_data.query),
+					(time_t)-1, &current_authdata, RESULT_NOT_AUTHORIZED,
+					"You are not authorized to view comment %lu.",
+					cgi_data.comment->comment_id));
+			result = ERROR;
+			break;
+			}
 		json_object_append_object(json_root, "result", 
 				json_result(query_time, THISCGI, 
 				svm_get_string_from_value(cgi_data.query, valid_queries), 
@@ -1144,6 +1177,17 @@ int main(void) {
 				cgi_data.service_description));
 		break;
 	case STATUS_QUERY_DOWNTIME:
+		if(FALSE == is_authorized_for_downtime(cgi_data.downtime)) {
+			json_object_append_object(json_root, "result", 
+					json_result(query_time, THISCGI, 
+					svm_get_string_from_value(cgi_data.query, valid_queries), 
+					get_query_status(query_status, cgi_data.query),
+					(time_t)-1, &current_authdata, RESULT_NOT_AUTHORIZED,
+					"You are not authorized to view downtime %lu.",
+					cgi_data.downtime->downtime_id));
+			result = ERROR;
+			break;
+			}
 		json_object_append_object(json_root, "result", 
 				json_result(query_time, THISCGI, 
 				svm_get_string_from_value(cgi_data.query, valid_queries), 
@@ -4036,10 +4080,37 @@ void json_status_service_details(json_object *json_details,
 #endif
 	}
 
+/* A comment or downtime is visible to whoever may view its host or
+	service, as on extinfo.cgi's comment and downtime pages */
+static int is_authorized_for_comment(nagios_comment *temp_comment) {
+
+	if(HOST_COMMENT == temp_comment->comment_type) {
+		return is_authorized_for_host(find_host(temp_comment->host_name),
+				&current_authdata);
+		}
+	return is_authorized_for_service(find_service(temp_comment->host_name,
+			temp_comment->service_description), &current_authdata);
+	}
+
+static int is_authorized_for_downtime(scheduled_downtime *temp_downtime) {
+
+	if(HOST_DOWNTIME == temp_downtime->type) {
+		return is_authorized_for_host(find_host(temp_downtime->host_name),
+				&current_authdata);
+		}
+	return is_authorized_for_service(find_service(temp_downtime->host_name,
+			temp_downtime->service_description), &current_authdata);
+	}
+
 int json_status_comment_passes_selection(nagios_comment *temp_comment,
 		int time_field, time_t start_time, time_t end_time,
 		unsigned comment_types, unsigned entry_types, unsigned persistence,
 		unsigned expiring, char *host_name, char *service_description) {
+
+	/* Skip if user is not authorized for the comment's host or service */
+	if(FALSE == is_authorized_for_comment(temp_comment)) {
+		return 0;
+		}
 
 	switch(time_field) {
 	case STATUS_TIME_INVALID: 
@@ -4349,6 +4420,11 @@ int json_status_downtime_passes_selection(scheduled_downtime *temp_downtime,
 		unsigned object_types, unsigned downtime_types, unsigned triggered,
 		int triggered_by, unsigned in_effect, char *host_name,
 		char *service_description) {
+
+	/* Skip if user is not authorized for the downtime's host or service */
+	if(FALSE == is_authorized_for_downtime(temp_downtime)) {
+		return 0;
+		}
 
 	switch(time_field) {
 	case STATUS_TIME_INVALID: 

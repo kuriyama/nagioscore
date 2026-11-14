@@ -1,5 +1,6 @@
 import { fetchComments, extinfoHostUrl, extinfoServiceUrl, type CommentEntry } from './api';
 import { formatTimestamp } from './format';
+import { startAutoRefresh } from './refresh';
 import { deleteHostComment, deleteServiceComment } from './commands';
 
 /**
@@ -98,11 +99,9 @@ function renderTableBody(
 export function renderComments(container: HTMLElement): () => void {
 	container.innerHTML = '<p>Loading comments...</p>';
 
-	let stopped = false;
 	let currentComments: CommentEntry[] = [];
 
 	let tbody: HTMLTableSectionElement | null = null;
-	let lastUpdatedEl: HTMLElement | null = null;
 	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
 
@@ -119,15 +118,15 @@ export function renderComments(container: HTMLElement): () => void {
 		}
 	}
 
+	const refresher = startAutoRefresh(REFRESH_INTERVAL_MS, () => load(false));
+
 	async function load(initial: boolean): Promise<void> {
 		let comments;
 		try {
 			comments = await fetchComments();
 		} catch (err) {
 			if (!initial) {
-				if (lastUpdatedEl) {
-					lastUpdatedEl.textContent = `Refresh failed: ${err instanceof Error ? err.message : String(err)}`;
-				}
+				refresher.failed(err);
 				return;
 			}
 			container.innerHTML = '';
@@ -144,10 +143,7 @@ export function renderComments(container: HTMLElement): () => void {
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
-
-			lastUpdatedEl = document.createElement('div');
-			lastUpdatedEl.id = 'detailLastUpdated';
-			container.appendChild(lastUpdatedEl);
+			container.appendChild(refresher.el);
 
 			actionStatusEl = document.createElement('div');
 			actionStatusEl.id = 'detailActionStatus';
@@ -172,20 +168,11 @@ export function renderComments(container: HTMLElement): () => void {
 			container.appendChild(table);
 		}
 
-		if (lastUpdatedEl) {
-			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(Math.floor(Date.now() / 1000))}`;
-		}
+		refresher.succeeded();
 		rerenderTable();
 	}
 
 	void load(true);
 
-	const intervalId = window.setInterval(() => {
-		if (!stopped) void load(false);
-	}, REFRESH_INTERVAL_MS);
-
-	return () => {
-		stopped = true;
-		window.clearInterval(intervalId);
-	};
+	return () => refresher.stop();
 }

@@ -1,5 +1,6 @@
 import { fetchNotifications, extinfoHostUrl, extinfoServiceUrl, type NotificationEntry } from './api';
 import { formatTimestamp } from './format';
+import { startAutoRefresh } from './refresh';
 
 /**
  * Port of notifications.cgi?contact=all: recent host/service
@@ -95,10 +96,10 @@ function renderTableBody(tbody: HTMLTableSectionElement, entries: NotificationEn
 export function renderNotifications(container: HTMLElement): () => void {
 	container.innerHTML = '<p>Loading notifications...</p>';
 
-	let stopped = false;
 	let tbody: HTMLTableSectionElement | null = null;
-	let lastUpdatedEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
+
+	const refresher = startAutoRefresh(REFRESH_INTERVAL_MS, () => load(false));
 
 	async function load(initial: boolean): Promise<void> {
 		const now = Math.floor(Date.now() / 1000);
@@ -107,9 +108,7 @@ export function renderNotifications(container: HTMLElement): () => void {
 			entries = await fetchNotifications({ startTime: now - WINDOW_SECONDS, endTime: now });
 		} catch (err) {
 			if (!initial) {
-				if (lastUpdatedEl) {
-					lastUpdatedEl.textContent = `Refresh failed: ${err instanceof Error ? err.message : String(err)}`;
-				}
+				refresher.failed(err);
 				return;
 			}
 			container.innerHTML = '';
@@ -124,15 +123,12 @@ export function renderNotifications(container: HTMLElement): () => void {
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
+			container.appendChild(refresher.el);
 
 			const note = document.createElement('div');
 			note.id = 'detailFilterBar';
 			note.textContent = 'Showing the last 24 hours.';
 			container.appendChild(note);
-
-			lastUpdatedEl = document.createElement('div');
-			lastUpdatedEl.id = 'detailLastUpdated';
-			container.appendChild(lastUpdatedEl);
 
 			const table = document.createElement('table');
 			table.className = 'status';
@@ -156,9 +152,7 @@ export function renderNotifications(container: HTMLElement): () => void {
 		if (heading) {
 			heading.textContent = `Notifications (${entries.length})`;
 		}
-		if (lastUpdatedEl) {
-			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(now)}`;
-		}
+		refresher.succeeded(now);
 		if (tbody) {
 			renderTableBody(tbody, entries);
 		}
@@ -166,12 +160,5 @@ export function renderNotifications(container: HTMLElement): () => void {
 
 	void load(true);
 
-	const intervalId = window.setInterval(() => {
-		if (!stopped) void load(false);
-	}, REFRESH_INTERVAL_MS);
-
-	return () => {
-		stopped = true;
-		window.clearInterval(intervalId);
-	};
+	return () => refresher.stop();
 }

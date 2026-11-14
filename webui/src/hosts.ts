@@ -12,6 +12,7 @@ import {
 	type StatusTotals,
 } from './api';
 import { formatDuration, formatTimestamp } from './format';
+import { startAutoRefresh } from './refresh';
 import { promptAcknowledge, promptDowntime } from './actions';
 import { acknowledgeHost, scheduleHostDowntime } from './commands';
 import { renderTotalsRow } from './statustotals';
@@ -370,7 +371,6 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 	const sort: SortState = { key: 'host', direction: 'asc' };
 	let selectedGroup: string | null = null;
 	let problemFilter: ProblemFilterMode = initialFilter;
-	let stopped = false;
 
 	// Current data, updated in place on every successful load() so that
 	// event handlers (sort clicks, filter changes) always see fresh data
@@ -385,7 +385,6 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 	let tbody: HTMLTableSectionElement | null = null;
 	let groupSelect: HTMLSelectElement | null = null;
 	let problemSelect: HTMLSelectElement | null = null;
-	let lastUpdatedEl: HTMLElement | null = null;
 	let actionStatusEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
 	let totalsContainer: HTMLElement | null = null;
@@ -472,6 +471,8 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		}
 	}
 
+	const refresher = startAutoRefresh(REFRESH_INTERVAL_MS, () => load(false));
+
 	// Group and Show: changes both refetch now, so a slow response for a
 	// previous selection could otherwise land after the current one's.
 	let loadSeq = 0;
@@ -503,9 +504,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		} catch (err) {
 			if (!initial) {
 				// Keep showing the last-good table; just surface the error.
-				if (lastUpdatedEl) {
-					lastUpdatedEl.textContent = `Refresh failed: ${err instanceof Error ? err.message : String(err)}`;
-				}
+				refresher.failed(err);
 				return;
 			}
 			container.innerHTML = '';
@@ -528,6 +527,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
+			container.appendChild(refresher.el);
 
 			totalsContainer = document.createElement('div');
 			container.appendChild(totalsContainer);
@@ -572,10 +572,6 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 
 			container.appendChild(filterBar);
 
-			lastUpdatedEl = document.createElement('div');
-			lastUpdatedEl.id = 'detailLastUpdated';
-			container.appendChild(lastUpdatedEl);
-
 			actionStatusEl = document.createElement('div');
 			actionStatusEl.id = 'detailActionStatus';
 			container.appendChild(actionStatusEl);
@@ -613,9 +609,7 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 		}
 
 		populateGroupSelect();
-		if (lastUpdatedEl) {
-			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(currentQueryTime)}`;
-		}
+		refresher.succeeded(currentQueryTime);
 		// Not part of rerenderTable(): the totals only depend on the group
 		// scope and fresh status data, so a sort-column click shouldn't
 		// cost another statusjson.cgi request.
@@ -625,14 +619,5 @@ export function renderHosts(container: HTMLElement, initialFilter: ProblemFilter
 
 	void load(true);
 
-	const intervalId = window.setInterval(() => {
-		if (!stopped) {
-			void load(false);
-		}
-	}, REFRESH_INTERVAL_MS);
-
-	return () => {
-		stopped = true;
-		window.clearInterval(intervalId);
-	};
+	return () => refresher.stop();
 }

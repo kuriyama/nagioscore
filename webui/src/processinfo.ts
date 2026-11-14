@@ -1,5 +1,6 @@
 import { fetchProgramStatus, type ProgramStatus } from './api';
 import { formatTimestamp } from './format';
+import { startAutoRefresh } from './refresh';
 
 /**
  * Port of extinfo.cgi?type=0 ("Process Info"): a read-only fact sheet of
@@ -54,17 +55,15 @@ function renderFacts(tbody: HTMLTableSectionElement, status: ProgramStatus): voi
 export function renderProcessInfo(container: HTMLElement): () => void {
 	container.innerHTML = '<p>Loading process information...</p>';
 
-	let stopped = false;
 	let tbody: HTMLTableSectionElement | null = null;
-	let lastUpdatedEl: HTMLElement | null = null;
+
+	const refresher = startAutoRefresh(REFRESH_INTERVAL_MS, () => load(false));
 
 	async function load(initial: boolean): Promise<void> {
 		const status = await fetchProgramStatus();
 		if (!status) {
 			if (!initial) {
-				if (lastUpdatedEl) {
-					lastUpdatedEl.textContent = 'Refresh failed: could not load process information.';
-				}
+				refresher.failed('could not load process information.');
 				return;
 			}
 			container.innerHTML = '';
@@ -80,10 +79,7 @@ export function renderProcessInfo(container: HTMLElement): () => void {
 			const heading = document.createElement('h2');
 			heading.textContent = 'Process Information';
 			container.appendChild(heading);
-
-			lastUpdatedEl = document.createElement('div');
-			lastUpdatedEl.id = 'detailLastUpdated';
-			container.appendChild(lastUpdatedEl);
+			container.appendChild(refresher.el);
 
 			const table = document.createElement('table');
 			table.className = 'status';
@@ -92,9 +88,7 @@ export function renderProcessInfo(container: HTMLElement): () => void {
 			container.appendChild(table);
 		}
 
-		if (lastUpdatedEl) {
-			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(Math.floor(Date.now() / 1000))}`;
-		}
+		refresher.succeeded();
 		if (tbody) {
 			renderFacts(tbody, status);
 		}
@@ -102,12 +96,5 @@ export function renderProcessInfo(container: HTMLElement): () => void {
 
 	void load(true);
 
-	const intervalId = window.setInterval(() => {
-		if (!stopped) void load(false);
-	}, REFRESH_INTERVAL_MS);
-
-	return () => {
-		stopped = true;
-		window.clearInterval(intervalId);
-	};
+	return () => refresher.stop();
 }

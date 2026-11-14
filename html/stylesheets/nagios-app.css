@@ -78,6 +78,16 @@ body {
 	margin-bottom: 6px;
 	}
 
+/* webui/src/refresh.ts: data older than two refresh intervals (e.g. the
+   machine slept, or refreshing has stalled), or the last refresh failed. */
+#detailLastUpdated.stale,
+#detailLastUpdated.failed {
+	color: #000;
+	background-color: #FFBB55;
+	padding: 1px 4px;
+	display: inline-block;
+	}
+
 /* webui/src/hosts.ts and webui/src/services.ts's detail tables (table.status
    already comes from status.css). cgi/status.c's own show_host_detail()/
    show_service_detail() table has no font-size override of its own (so

@@ -7,6 +7,7 @@ import {
 	type ServiceStatusEntry,
 } from './api';
 import { formatTimestamp } from './format';
+import { startAutoRefresh } from './refresh';
 
 /**
  * Port of extinfo.cgi?type=7 ("Scheduling Queue"): every host/service check
@@ -166,12 +167,10 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 	container.innerHTML = '<p>Loading scheduling queue...</p>';
 
 	const sort: SortState = { key: 'nextCheck', direction: 'asc' };
-	let stopped = false;
 	let currentEntries: QueueEntry[] = [];
 
 	let headerCells: HTMLTableCellElement[] = [];
 	let tbody: HTMLTableSectionElement | null = null;
-	let lastUpdatedEl: HTMLElement | null = null;
 	let heading: HTMLElement | null = null;
 
 	function rerenderTable(): void {
@@ -189,6 +188,8 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 		}
 	}
 
+	const refresher = startAutoRefresh(REFRESH_INTERVAL_MS, () => load(false));
+
 	async function load(initial: boolean): Promise<void> {
 		let hostResult;
 		let serviceResult;
@@ -196,9 +197,7 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 			[hostResult, serviceResult] = await Promise.all([fetchHostStatusDetails(), fetchServiceStatusDetails()]);
 		} catch (err) {
 			if (!initial) {
-				if (lastUpdatedEl) {
-					lastUpdatedEl.textContent = `Refresh failed: ${err instanceof Error ? err.message : String(err)}`;
-				}
+				refresher.failed(err);
 				return;
 			}
 			container.innerHTML = '';
@@ -215,10 +214,7 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 
 			heading = document.createElement('h2');
 			container.appendChild(heading);
-
-			lastUpdatedEl = document.createElement('div');
-			lastUpdatedEl.id = 'detailLastUpdated';
-			container.appendChild(lastUpdatedEl);
+			container.appendChild(refresher.el);
 
 			const table = document.createElement('table');
 			table.className = 'status';
@@ -258,20 +254,11 @@ export function renderSchedulingQueue(container: HTMLElement): () => void {
 			updateHeaderLabels();
 		}
 
-		if (lastUpdatedEl) {
-			lastUpdatedEl.textContent = `Last updated: ${formatTimestamp(Math.max(hostResult.queryTime, serviceResult.queryTime))}`;
-		}
+		refresher.succeeded(Math.max(hostResult.queryTime, serviceResult.queryTime));
 		rerenderTable();
 	}
 
 	void load(true);
 
-	const intervalId = window.setInterval(() => {
-		if (!stopped) void load(false);
-	}, REFRESH_INTERVAL_MS);
-
-	return () => {
-		stopped = true;
-		window.clearInterval(intervalId);
-	};
+	return () => refresher.stop();
 }
